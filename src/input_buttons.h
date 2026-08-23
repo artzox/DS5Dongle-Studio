@@ -39,6 +39,11 @@ constexpr uint8_t RPT_TOUCH0  = 32;  // finger 1, 4 bytes
 constexpr uint8_t RPT_TOUCH1  = 36;  // finger 2, 4 bytes
 constexpr uint8_t RPT_MIN_LEN = 40;  // shortest report we can fully decode
 
+// Touch coordinate ranges. Declared before button_mask(), which qualifies a
+// touchpad click by which half of the pad the finger is on.
+constexpr uint16_t TOUCH_X_MAX = 1919;
+constexpr uint16_t TOUCH_Y_MAX = 1079;
+
 // Logical button bits. APPEND ONLY - these values are persisted inside every
 // stored macro chord, so renumbering silently rebinds every macro a user saved.
 enum : uint32_t {
@@ -61,7 +66,34 @@ enum : uint32_t {
     BTN_PS         = 1u << 16,
     BTN_TOUCHPAD   = 1u << 17, // touchpad CLICK, not a touch
     BTN_MUTE       = 1u << 18,
-    BTN_ALL        = 0x0007FFFFu,
+    // DualSense Edge only. Report byte 9 bits 4-7, already documented in
+    // utils.h and never decoded until now. APPENDED, like every bit before
+    // them: these values are persisted inside every stored macro chord, so
+    // renumbering would silently rebind existing rows.
+    //
+    // The two Fn buttons are the useful half. Sony's own app claims Fn + a FACE
+    // button for switching the controller's on-board profiles, so building
+    // chords there fights it - but Fn + D-pad is unclaimed and nothing else on
+    // the pad uses it, so a chord built there cannot collide with normal play.
+    BTN_LEFT_FN    = 1u << 19,
+    BTN_RIGHT_FN   = 1u << 20,
+    BTN_LEFT_PAD   = 1u << 21,
+    BTN_RIGHT_PAD  = 1u << 22,
+    // Touchpad click, qualified by WHICH HALF the finger was on. The pad is one
+    // physical switch, so BTN_TOUCHPAD alone cannot tell a left click from a
+    // right one - but the finger position is in the same report, so these are
+    // derived from it. BTN_TOUCHPAD is still set on every click: a chord
+    // recorded before these existed keeps matching any click, while a chord
+    // that includes a half only matches clicks on that half (and wins over the
+    // generic one, since the longest fully-held chord wins).
+    //
+    // Set only when a finger is actually reported down. Clicking with a knuckle
+    // or the pad's edge can register the switch with no touch point, and
+    // guessing a half there would fire the wrong macro - a generic
+    // BTN_TOUCHPAD chord still catches those.
+    BTN_PAD_CLICK_LEFT  = 1u << 23,
+    BTN_PAD_CLICK_RIGHT = 1u << 24,
+    BTN_ALL        = 0x01FFFFFFu,
 };
 
 // Hat value -> direction bits. Index 8 is the idle/neutral position; anything
@@ -109,6 +141,24 @@ static inline uint32_t button_mask(const uint8_t *r, uint16_t len) {
     if (b2 & 0x01u) m |= BTN_PS;
     if (b2 & 0x02u) m |= BTN_TOUCHPAD;
     if (b2 & 0x04u) m |= BTN_MUTE;
+    // Edge-only bits. A standard DualSense leaves them clear, so decoding them
+    // unconditionally costs nothing and needs no is_dse test here.
+    if (b2 & 0x10u) m |= BTN_LEFT_FN;
+    if (b2 & 0x20u) m |= BTN_RIGHT_FN;
+    if (b2 & 0x40u) m |= BTN_LEFT_PAD;
+    if (b2 & 0x80u) m |= BTN_RIGHT_PAD;
+
+    // Qualify the pad click with the half the finger is on. Needs the touch
+    // block, which lives further into the report than the 10 bytes checked
+    // above - a shorter report simply keeps the unqualified click.
+    if ((m & BTN_TOUCHPAD) && len >= (uint16_t) (RPT_TOUCH0 + 4)) {
+        const uint8_t *t = r + RPT_TOUCH0;
+        if ((t[0] & 0x80u) == 0u) {                       // bit7 SET = lifted
+            const uint16_t x = (uint16_t) (t[1] | ((uint16_t) (t[2] & 0x0Fu) << 8));
+            m |= (x > (uint16_t) (TOUCH_X_MAX / 2)) ? BTN_PAD_CLICK_RIGHT
+                                                    : BTN_PAD_CLICK_LEFT;
+        }
+    }
 
     return m;
 }
@@ -133,8 +183,5 @@ static inline TouchPoint touch_point(const uint8_t *r, uint16_t len, uint8_t whi
     t.y = (uint16_t) ((b[2] >> 4) | ((uint16_t) b[3] << 4));
     return t;
 }
-
-constexpr uint16_t TOUCH_X_MAX = 1919;
-constexpr uint16_t TOUCH_Y_MAX = 1079;
 
 #endif // DS5_BRIDGE_INPUT_BUTTONS_H

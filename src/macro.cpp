@@ -449,7 +449,13 @@ static uint32_t best_chord(uint32_t mask, uint32_t disable) {
         if (e.gesture != GESTURE_NONE || e.chord == 0) continue;
         if (!macro_is_enabled(disable, i)) continue;
         if ((mask & e.chord) != e.chord) continue;
-        const uint8_t bits = popcount32(e.chord);
+        // Rank by how SPECIFIC the chord is, which is its bit count plus one
+        // for naming a touchpad half. Every click reports the generic bit AND
+        // the half, so a one-button "click (left)" chord would otherwise tie
+        // with a one-button generic "click" chord and lose on table order -
+        // the more specific binding must win, exactly as a longer chord does.
+        uint8_t bits = popcount32(e.chord);
+        if (e.chord & (BTN_PAD_CLICK_LEFT | BTN_PAD_CLICK_RIGHT)) bits++;
         if (bits > best_bits) { best_bits = bits; best = e.chord; }
     }
     return best;
