@@ -1,6 +1,64 @@
 # Changelog
 
-All notable changes to this project are documented here.
+## [1.29.1] — 2026-08-02
+
+Supersedes the 1.29.0 development build, which was not
+released.
+
+Macro input fixes on top of 1.29.0.
+
+### Fixed
+- **Edge Fn buttons and paddles were never captured when recording a macro.**
+  The firmware decoder and the portal's button table both listed them, but the
+  portal's live capture decoder still stopped at bit 18 - so the firmware could
+  match an Fn or paddle chord that recording could never produce.
+- **The touchpad click could not be recorded as a trigger at all.** The click
+  bit was stripped from every committed chord, not just from the test that
+  decides swipe-versus-chord, so clicking the pad with no movement recorded
+  nothing: no gesture, and an empty chord. The bit is now kept in the chord and
+  only the swipe decision ignores it, so the click works alone, in a chord, and
+  with hold.
+- **A half-specific click records as the half alone.** Recording a left click
+  produced the chord "Touchpad click + Touchpad click (left)" - two buttons for
+  one press - because the controller reports the generic bit alongside the
+  qualified one. Recording now drops the generic bit whenever a half is
+  present, and the manual picker treats the generic click and the two halves as
+  mutually exclusive. Matching is unaffected: the controller still reports all
+  the bits, so a chord naming only the half matches, and firmware ranking now
+  counts a named half as extra specificity so a one-button half chord still
+  beats a one-button generic chord instead of tying with it.
+- **The touchpad click can now distinguish left from right.** The pad is one
+  physical switch, but the finger position is in the same report, so a click is
+  qualified as left or right by which half the finger was on (new logical bits
+  23/24, appended). The generic click bit is still set on every click, so chords
+  recorded before this keep matching either half, and a half-specific chord wins
+  over a generic one. A click with no finger reported - knuckle, pad edge -
+  stays unqualified rather than guessing. Firmware-side, so it arrives with the
+  1.29.1 build.
+- **Added a manual trigger picker** (*Pick* beside *Record input*): tick the
+  trigger buttons by hand instead of holding them. Needed for anything the
+  controller consumes before transmitting - an Edge paddle that still has an
+  assignment in Sony's app is sent as whatever it was mapped to, so no amount of
+  recording will see the paddle itself.
+- **Added `tools/portal-buttons-test.js`**, the cross-check `input_buttons.h`
+  has always referenced: it verifies the portal's bit table and live decoder
+  against the header, and that every bit the firmware decodes is reachable from
+  the portal. It fails on the pre-fix code with 9 errors.
+
+Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
+
+## [1.29.0] — 2026-08-22
+
+### Added
+- **DualSense Edge Fn buttons and paddles as macro inputs.** All four sit in
+  report byte 9 and were never decoded; they now join the logical button mask as
+  appended bits, so existing macros keep their meaning.
+  - **Fn + D-pad** is the combination worth using. Sony's app claims Fn + a face
+    button for switching the controller's on-board profiles, so chords built there
+    compete with it, while Fn + a D-pad direction is unclaimed.
+  - A paddle with an assignment in the Sony app still sends that assignment: the
+    controller applies its own mapping before the report reaches the dongle.
+  - A standard DualSense never sets these bits, so decoding them costs nothing.
 
 ## [1.28.4] — 2026-08-22
 

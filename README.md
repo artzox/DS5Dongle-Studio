@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.28.4**
+**Version 1.29.1**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.28.4-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.29.1-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -276,7 +276,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.28.4.uf2` (Pico 2 W) or `ds5-v1.28.4-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.29.1.uf2` (Pico 2 W) or `ds5-v1.29.1-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1224,6 +1224,7 @@ Everything is edited on the **Macros** tab.
 | Checkbox | Enables this macro **for the current profile**. Per-slot — see below. |
 | Name | Up to 15 characters, stored on the dongle so your names survive a different PC or a cleared browser. |
 | Record input | Press it, then hold the buttons you want or swipe the touchpad, then press **Stop**. |
+| Pick (input) | Tick the trigger buttons by hand instead of holding them. Same result as recording — useful for anything the controller consumes before it transmits, such as an assigned Edge paddle. |
 | Record output | Press it, then type the key combo on your real keyboard, then press **Stop**. |
 | **+** / **−** | Adds or removes a macro row. (The checkbox enables; the minus deletes.) |
 
@@ -1266,6 +1267,34 @@ a single pulse — tap-versus-hold does not apply.
 Matching is exact: a macro recorded as *swipe right, left half* only fires on a
 swipe that starts on the left half.
 
+The touchpad **click** is a separate thing: it is an ordinary button, so it can be
+recorded on its own or as part of a chord, and it can hold. A swipe is only stored
+as a swipe when nothing was held during it — press the pad while swiping and you
+get the chord, not the gesture.
+
+**Left and right clicks are distinguishable.** The pad has one physical switch, so
+the click itself cannot tell you where you pressed — but the finger position is in
+the same report, so a click is recorded as *Touchpad click (left)* or *(right)*
+depending on which half your finger was on. Three ways to use that:
+
+| Recorded as | Fires on |
+|---|---|
+| Touchpad click (left) | left half only |
+| Touchpad click (right) | right half only |
+| Touchpad click | either half — the generic click |
+
+Clicking a half records as that half alone, so the row reads *Touchpad click
+(left)* rather than naming two buttons for one press. The generic binding is still
+available from **Pick** when you want either half to fire the same macro, and the
+three are mutually exclusive there — one press cannot be both "either half" and
+"this half".
+
+Macros recorded before this existed are generic clicks and keep firing on both
+halves. Bind both a generic and a half-specific macro and the specific one wins,
+the same way a longer chord beats a shorter one. If the switch fires with no
+finger reported — a knuckle, or the very edge of the pad — the click stays
+unqualified, so only a generic binding catches it.
+
 #### The two halves are stored differently, and this is the useful part
 
 | | Where it lives | Scope |
@@ -1287,6 +1316,42 @@ The panel warns you when the enable state has changed but not yet been saved.
 > is already on the interface is present anyway, so there is no reconnect at all.
 > This is the same constraint as wake: a game with native DualSense support may
 > stop recognising the controller while the keyboard interface is present.
+
+#### DualSense Edge buttons *(new in 1.29.0)*
+
+The Edge's two **Fn** buttons and two **paddles** are available as macro inputs.
+They were always in the controller's report and simply never read.
+
+> **Read this first: a paddle only reaches the dongle if it is UNASSIGNED.**
+> The Edge maps paddles *inside the controller*, before anything is transmitted.
+> A paddle assigned in Sony's app — or in the on-board profile you are currently
+> using — is sent as **whatever it was mapped to**: assign it to Cross and the
+> report says Cross, with the paddle bit never set. It does not arrive as "a
+> paddle" and then also as Cross, so there is nothing here that can intercept or
+> override it. To use a paddle as a macro input, clear its assignment in the
+> Sony app (or select an on-board profile that leaves it empty) — then the
+> paddle bit is set and the dongle can see it. This is also why a paddle can
+> appear to work in one on-board profile and be invisible in another.
+
+**Fn + D-pad is the combination to build on.** Sony's own app uses **Fn + a face
+button** to switch the controller's on-board profiles, so chords there fight it —
+but nothing claims Fn + a D-pad direction, so those cannot collide with normal
+play or with the app.
+
+**The Fn buttons themselves are only partly yours.** Fn is reported to the dongle
+like any other button, but the controller keeps acting on its own combinations at
+the same time — pressing Fn with a face button still switches on-board profiles
+whatever you bind here. Build on Fn + D-pad and that does not arise; build on
+Fn + face and you get your macro *and* a profile switch.
+
+They behave like any other button otherwise: chords, hold, replace, keyboard,
+controller and mouse outputs all work, and a standard DualSense simply never sets
+them.
+
+**If recording will not capture one**, use **Pick** next to *Record input* and
+tick the buttons by hand — it writes exactly the same chord. That is the reliable
+route for a paddle you have not cleared yet, or for any combination the
+controller consumes before it is transmitted.
 
 #### Motion gestures *(new in 1.20.0)*
 
@@ -1622,9 +1687,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.28.4.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.28.4)
-- `ds5-v1.28.4-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.29.1.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.29.1)
+- `ds5-v1.29.1-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

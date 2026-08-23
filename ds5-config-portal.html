@@ -2827,6 +2827,17 @@ const BTN = [
   ['PS',         1<<16, 'PS'],
   ['TOUCHPAD',   1<<17, 'Touchpad click'],
   ['MUTE',       1<<18, 'Mute'],
+  // DualSense Edge only. Sony's app owns Fn + a FACE button for its on-board
+  // profile switching, so Fn + D-pad is the combination worth building on.
+  ['LEFT_FN',   1<<19, 'Fn (left)'],
+  ['RIGHT_FN',  1<<20, 'Fn (right)'],
+  ['LEFT_PAD',  1<<21, 'Left paddle'],
+  ['RIGHT_PAD', 1<<22, 'Right paddle'],
+  // Touchpad click qualified by half. TOUCHPAD is still set on every click, so
+  // an older chord keeps matching either side; a chord naming a half only
+  // matches that half and wins over the generic one (longest chord wins).
+  ['PAD_CLICK_LEFT',  1<<23, 'Touchpad click (left)'],
+  ['PAD_CLICK_RIGHT', 1<<24, 'Touchpad click (right)'],
 ];
 // Hat value -> direction bits. THE D-PAD IS AN ENUM, NOT A BITMASK: "Up" is hat
 // value 0, indistinguishable from "no button", and the idle value 8 would read
@@ -2846,6 +2857,25 @@ function macroButtonMask(d){
   if (b2 & 0x01) m |= 1<<16;
   if (b2 & 0x02) m |= 1<<17;
   if (b2 & 0x04) m |= 1<<18;
+  // Edge-only bits 4-7 of byte 9. button_mask() in src/input_buttons.h decodes
+  // these and the BTN table lists them, but this decoder stopped at bit 18 - so
+  // the firmware could MATCH an Fn/paddle chord that recording could never
+  // CAPTURE. A standard DualSense leaves them clear, so decoding is
+  // unconditional here exactly as it is in the header.
+  if (b2 & 0x10) m |= 1<<19;   // Fn (left)
+  if (b2 & 0x20) m |= 1<<20;   // Fn (right)
+  if (b2 & 0x40) m |= 1<<21;   // Left paddle
+  if (b2 & 0x80) m |= 1<<22;   // Right paddle
+  // Qualify a touchpad click by which half the finger is on - mirrors
+  // button_mask() in src/input_buttons.h, including leaving it unqualified
+  // when the switch fires with no finger reported (knuckle, pad edge).
+  if ((m & (1<<17)) && d.byteLength >= 36){
+    const t0 = d.getUint8(32);
+    if ((t0 & 0x80) === 0){
+      const x = d.getUint8(33) | ((d.getUint8(34) & 0x0F) << 8);
+      m |= (x > (TOUCH_X_MAX / 2)) ? (1<<24) : (1<<23);
+    }
+  }
   return m >>> 0;
 }
 function macroChordName(mask){
@@ -3110,6 +3140,7 @@ function macroKeyOptions(){
 }
 
 window._macroPick = window._macroPick || null;   // {row, mods:[usage], key:usage}
+window._macroPickIn = window._macroPickIn || null; // {row, mask} manual trigger chord
 
 // The Pick panel for a CONTROLLER output: the same eleven choices the dropdown
 // carried, but reached the same way as the keyboard picker so a row asks its
@@ -3128,6 +3159,54 @@ function macroPickOutHTML(i, m, lo, hi, prompt){
   return h;
 }
 function macroPickClose(){ window._macroPick = null; macroRender(); }
+
+// ---- manual INPUT chord picker --------------------------------------------
+// Recording is still the fast path, but some triggers cannot be recorded
+// reliably: the Edge Fn buttons and paddles only report when the controller is
+// not already consuming them (see the README), and a chord built on them may be
+// easier to tick than to hold. This writes the same chord bits recording would.
+function macroPickInOpen(i){
+  const rows = window._macroRows || [];
+  const m = rows[i]; if (!m) return;
+  window._macroPickIn = { row: i, mask: (m.gesture ? 0 : (m.chord >>> 0)) };
+  macroRender();
+}
+function macroPickInClose(){ window._macroPickIn = null; macroRender(); }
+function macroPickInToggle(bit, on){
+  const p = window._macroPickIn; if (!p) return;
+  p.mask = on ? ((p.mask | bit) >>> 0) : ((p.mask & ~bit) >>> 0);
+  // One press cannot be both "either half" and "this half", so the generic
+  // touchpad click and the two qualified ones are mutually exclusive here.
+  const PAD = 1<<17, L = 1<<23, R = 1<<24;
+  if (on && (bit === L || bit === R)) p.mask &= ~(PAD | (bit === L ? R : L));
+  if (on && bit === PAD)              p.mask &= ~(L | R);
+  p.mask = p.mask >>> 0;
+  macroRender();
+}
+function macroPickInApply(){
+  const p = window._macroPickIn; if (!p) return;
+  const rows = window._macroRows || [];
+  const m = rows[p.row]; if (!m) { macroPickInClose(); return; }
+  m.chord = p.mask >>> 0;
+  if (m.chord) m.gesture = 0;      // a chord and a gesture are alternatives
+  macroDirty(p.row);
+  macroPickInClose();
+}
+function macroPickInHTML(i){
+  const p = window._macroPickIn;
+  let h = '<div style="border:1px solid #06a;background:#001a2a;padding:8px;border-radius:6px;margin:6px 0">';
+  h += '<div style="font-size:12px;color:var(--sub);margin-bottom:6px">Tick the buttons this macro should trigger on. Fn and paddle bits are DualSense Edge only, and only report when the controller is not already using them.</div>';
+  for (const b of BTN){
+    const on = (p.mask & b[1]) !== 0;
+    h += '<button class="btn' + (on ? '' : ' btn-outline') + '" style="padding:2px 8px;margin:0 4px 4px 0;font-size:12px" ' +
+         'onclick="macroPickInToggle(' + b[1] + ', ' + (on ? 'false' : 'true') + ')">' + b[2] + '</button>';
+  }
+  h += '<div style="margin-top:4px;font-size:12px;color:var(--sub)">Chord: ' + (macroChordName(p.mask) || 'none') + '</div>';
+  h += '<div style="margin-top:4px"><button class="btn" style="padding:2px 10px;font-size:12px" onclick="macroPickInApply()">Apply</button>' +
+       ' <button class="btn btn-outline" style="padding:2px 10px;font-size:12px" onclick="macroPickInClose()">Cancel</button></div>';
+  h += '</div>';
+  return h;
+}
 
 function macroPickOpen(i){
   const rows = window._macroRows || [];
@@ -3694,21 +3773,33 @@ async function macroRecordStop(){
   if (st.which === 0){
     try { device.removeEventListener('inputreport', macroOnInputReport); } catch(e){}
     await macroSuspendFiring(false);
-    // A swipe wins only when no real buttons were held. The touchpad CLICK is a
-    // button, so a pressed swipe would otherwise register as both.
-    const chordNoPad = (st.peak >>> 0) & ~(1<<17);
-    if (st.gesture && !chordNoPad){
+    // A swipe wins only when NOTHING was held - including the touchpad click,
+    // which is a button in its own right. The pad bit used to be stripped from
+    // the committed chord as well as from this test, so a touchpad click could
+    // never be recorded as a trigger: click-with-no-movement produced no
+    // gesture and an empty chord, i.e. nothing at all. Keep the bit in the
+    // chord; only the swipe-versus-chord decision ignores it.
+    // A qualified click sets three bits (TOUCHPAD + the half), which changes
+    // nothing here: any of them means something was held, so a swipe still
+    // loses to a press, and a plain swipe still sets none of them.
+    let held = (st.peak >>> 0);
+    // Record the HALF alone, not "click + left". The firmware still reports the
+    // generic bit on every click, so a chord naming only the half matches (and
+    // outranks a generic binding); carrying both bits would just be a chord
+    // that reads like two buttons for one press.
+    if (held & ((1<<23) | (1<<24))) held &= ~(1<<17);
+    if (st.gesture && !held){
       m.gesture = st.gesture & 0xff;
       m.chord = 0;
       m.flags &= ~1;          // a swipe has no release, so it can only pulse
       m.hold_cs = 0;
     } else if (st.peak){
-      m.chord = chordNoPad >>> 0;
+      m.chord = held >>> 0;
       m.gesture = 0;
       // The hold you performed sets the mode: a tap records short, a hold
       // records long with the duration you actually held.
-      const held = (st.upAt && st.peakAt) ? (st.upAt - st.peakAt) : 0;
-      if (held >= 400){ m.flags |= 1; m.hold_cs = Math.min(255, Math.round(held/10)); }
+      const heldMs = (st.upAt && st.peakAt) ? (st.upAt - st.peakAt) : 0;
+      if (heldMs >= 400){ m.flags |= 1; m.hold_cs = Math.min(255, Math.round(heldMs/10)); }
       else { m.flags &= ~1; m.hold_cs = 0; }
     }
   } else {
@@ -4079,6 +4170,7 @@ function macroRender(){
   if (!rows){ box.textContent = device ? 'Reading macros…' : 'Connect a device to load macros.'; return; }
   const rec = window._macroRec;
   const pick = window._macroPick;
+  const pickIn = window._macroPickIn;
 
   let h = '<div style="font-size:12px;color:var(--sub);margin-bottom:8px">' +
           'Definitions are stored on the dongle and shared by every slot. The checkboxes are per-slot: ' +
@@ -4136,7 +4228,11 @@ function macroRender(){
     h += '<td style="padding:2px 6px"><input type="text" maxlength="15" placeholder="unnamed" ' +
          'style="width:104px;padding:2px 4px;font-size:12px" oninput="macroSetLabel(' + i + ', this.value)" ' +
          'value="' + escAttr(m.label || '') + '"></td>';
-    h += '<td><button class="btn btn-outline" style="padding:2px 8px" onclick="macroRecord(' + i + ',0)"' + (rec && !recIn ? ' disabled' : '') + '>' + (recIn ? 'Stop' : 'Record input') + '</button></td>';
+    const pickInOpen = pickIn && pickIn.row === i;
+    h += '<td style="white-space:nowrap"><button class="btn btn-outline" style="padding:2px 8px" onclick="macroRecord(' + i + ',0)"' + (rec && !recIn ? ' disabled' : '') + '>' + (recIn ? 'Stop' : 'Record input') + '</button>';
+    h += ' <button class="btn btn-outline" style="padding:2px 6px" onclick="macroPickInOpen(' + i + ')"' +
+         (rec || pickInOpen || isStick ? ' disabled' : '') +
+         ' title="Choose the trigger buttons by hand - needed for Fn and paddle chords the controller may not report while recording">Pick</button></td>';
     h += '<td style="padding:2px 8px;color:' + (inLbl ? 'inherit' : 'var(--sub)') + '">' + inTxt + '</td>';
     const pickOpen = pick && pick.row === i;
     h += '<td style="white-space:nowrap">';
@@ -4164,6 +4260,9 @@ function macroRender(){
     h += '<td><button class="btn btn-outline" style="padding:2px 6px" onclick="macroDeleteRow(' + i + ')"' + dis + '>−</button></td>';
     h += '</tr>';
     h += macroOptionsRowHTML(i, m, isStick, dis);
+    if (pickInOpen){
+      h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickInHTML(i) + '</td></tr>';
+    }
     if (pickOpen && macroOutKind(i, m) === 2){
       h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickOutHTML(i, m, MOUT_FIRST, MOUT_LAST, 'Which mouse action should this macro send?') + '</td></tr>';
     } else if (pickOpen && macroOutKind(i, m) === 1){
@@ -4671,7 +4770,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.28.4</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.29.1</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
