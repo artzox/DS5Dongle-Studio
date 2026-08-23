@@ -168,18 +168,34 @@ fullscreen, is Chromium-only, and still never gets the Win key — not worth it.
 ## 4. Logical button decode
 
 `src/input_buttons.h` is the single source of truth. The portal carries a JS
-transcription; `tools/portal-buttons-test.js` must cross-check both against a
-shared vector table.
+transcription; `tools/portal-buttons-test.js` cross-checks both, deriving the
+expected bits from the header text itself rather than a hand-copied table, and
+asserting that every bit the firmware decodes is reachable from the portal's
+capture path. That last check exists because it failed in practice: 1.29.0
+added the Edge bits to the header and to the portal's button table, but the
+portal's live decoder still stopped at bit 18, so the firmware could match a
+chord recording could never produce.
 
 **The D-pad is an enum, not a bitmask.** This is the one thing a naive
 24-bit-mask-over-bytes-7/8/9 implementation gets wrong: "Up" is hat value 0, so
 it is indistinguishable from "no button", and the idle value 8 reads as a
 phantom press. Everything goes through `button_mask()`.
 
-19 bits defined (4 D-pad directions expanded from the hat, 4 face, 4
-shoulder/trigger-click, Create/Options/L3/R3, PS/touchpad-click/mute). **Append
-only** — these values are persisted inside every stored `chord`, so renumbering
-silently rebinds every macro a user saved.
+25 bits defined: 4 D-pad directions expanded from the hat, 4 face, 4
+shoulder/trigger-click, Create/Options/L3/R3, PS/touchpad-click/mute (bits
+0-18), the DualSense Edge Fn buttons and paddles (19-22), and the touchpad
+click qualified by half (23-24). **Append only** — these values are persisted
+inside every stored `chord`, so renumbering silently rebinds every macro a user
+saved.
+
+**Bits 23/24 are derived, not reported.** The pad has one physical switch; the
+half comes from finger 1's X in the same report. `BTN_TOUCHPAD` is still set on
+every click, so pre-existing generic bindings keep matching, and a click with no
+finger reported (knuckle, pad edge) stays unqualified rather than guessing a
+side. Because a click reports the generic bit *and* the half, `best_chord()`
+ranks a chord naming a half as one more than its bit count — otherwise a
+one-button "click (left)" would tie with a one-button generic "click" and lose
+on table order.
 
 Verified behaviour: idle → `0x00000`; hat 0 → `UP`; hat 7 → `UP|LEFT`; hat `0x0F`
 clamps to idle; R3+Up → `0x08001`; a short report → `0` rather than garbage.
