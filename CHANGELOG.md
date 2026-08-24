@@ -1,6 +1,159 @@
 # Changelog
 
-All notable changes to this project are documented here.
+Supersedes the 1.29.9 and 1.30.0-1.31.0 development builds, which were not
+released.
+
+## [1.31.1] — 2026-08-02
+
+### Fixed
+- **Recording a touchpad click could capture the opposite half.** 1.30.4 moved
+  the firmware to decide the half from where the finger LANDED, but the portal
+  was left deriving it from the position at CLICK time - the rule that was
+  wrong in the first place. A recording made while the pressed-finger centre
+  read on the other side of the middle produced a chord the firmware would
+  never match, so the macro simply never fired. The portal now uses the
+  touch-down position it already tracks for gestures, with the same neutral
+  centre band, so what is recorded is what is matched.
+-  checks the two rules against each other
+  instead of the old click-time behaviour it was still asserting.
+
+## [1.31.0] — 2026-08-02
+
+### Added
+- **Seven more macro output buttons: Create, Options, Touchpad click and the
+  four D-pad directions.** The output list came from the two-stage trigger
+  feature, which only ever needed face buttons, shoulders, sticks and trigger
+  clicks; macros reused it and inherited the gap, so a macro could TRIGGER on
+  Create or a D-pad direction but never SEND one. Mic and PS are deliberately
+  still absent - PS collides with the PS-shortcut feature and Mute is a state
+  toggle rather than a momentary button.
+  - The D-pad needed real work rather than another bit: it is a hat ENUM in the
+    report, so the four directions share one nibble. Injected directions are
+    merged with whatever the player is physically holding and the nibble is
+    re-encoded once. An injected direction WINS over a held one on the same
+    axis - a macro that says "press Up" should press Up even if the player is
+    leaning down - the other axis is preserved, and opposite injected
+    directions cancel, since the hat cannot express both.
+  - The new values are numbered from 16, ABOVE the mouse outputs at 11-15,
+    because those numbers are already persisted in saved macros. Numbering the
+    new buttons from 11 would have turned every saved "left click" into a
+    gamepad button. `MOUT_FIRST` no longer derives from the button count for
+    the same reason.
+
+## [1.30.5] — 2026-08-02
+
+### Added
+- **Separate vertical speed for Stick to Mouse**, mirroring the gyro vertical
+  sensitivity: 0 keeps it as one knob and follows the main Speed, any other
+  value sets the vertical rate independently. Worth having for the same reason
+  it is on the gyro — a game vertical aiming range is far smaller than its
+  horizontal one, so the gain that feels right for turning is usually too fast
+  for looking up and down. Half of Speed is a sensible starting point. The
+  deadzone and response curve still act on the overall stick magnitude, so
+  diagonals keep their direction and simply travel further horizontally than
+  vertically.
+
+## [1.30.4] — 2026-08-02
+
+### Fixed
+- **Touchpad click halves, properly this time.** 1.30.2 and 1.30.3 both took
+  the half from the finger position AT CLICK TIME, which is the worst moment to
+  sample it: the finger is flattened against the pad so its reported centre
+  moves, and the switch chatters on top of that. No amount of latching or
+  debouncing fixes a value that is wrong when it is read. The half now comes
+  from where the finger LANDED - the position the gesture code already records
+  at finger-down, milliseconds before the switch closes - and is frozen for the
+  whole press. This is what DS4Windows does with touchpad zones, which is why it
+  never had this problem.
+
+### Added
+- **Touchpad-click diagnostics** in the Device tab: the X where the finger last
+  landed, how many clicks the firmware has seen, and which half the last one
+  resolved to. Click each side a few times and the count should rise by exactly
+  one per click with the half matching the side used - which turns "it fires
+  both" into a measurement instead of a guess.
+
+## [1.30.3] — 2026-08-02
+
+### Fixed
+- **A single touchpad click still fired both half-bindings, and a long-press
+  fired its short action immediately.** 1.30.2 latched which half a click was on
+  at the press edge, but it did so BEFORE the debounce, so it saw the switch
+  chatter raw: the pad's contacts break and remake within a few milliseconds of
+  a press, and because the finger's contact patch shifts slightly between
+  bounces, the next edge could latch the OTHER half - one press fired both
+  bindings, the second only briefly. The same chatter re-armed the chord on
+  every bounce, resetting the long-press timer, so a macro set to hold fired its
+  short action at once. The debounce now runs first and the latch sees one clean
+  press, which is what DS4Windows does: decide the zone at finger-down, on a
+  debounced press.
+- **A half is latched only when it is unambiguous.** The debounce can briefly
+  hold the previous half alongside the new one; latching that pair would fire
+  whichever binding sorted first. When both or neither are present the click
+  stays unqualified for another report, which costs nothing since a press lasts
+  far longer than one report.
+
+## [1.30.2] — 2026-08-02
+
+### Fixed
+- **Left and right touchpad clicks both fired from one press.** Which half a
+  click was on was re-derived from the finger position on EVERY report, so a
+  finger that drifted across the middle while the pad was held - or a click near
+  the centre, where the reported X jitters - flipped the qualification mid-press
+  and triggered both bindings. With quicksave on one half and quickload on the
+  other, a save was reliably followed by a load. The half is now decided once,
+  on the press edge, and held until release: a click is one gesture, and the
+  half it started on is the half it is, however the finger wanders afterwards.
+- **Clicks near the centre line are no longer a coin toss.** A neutral band of
+  roughly 8% either side of the middle leaves a click unqualified, so a binding
+  on a specific half does not fire and only a generic touchpad-click binding
+  catches it. Doing nothing is the right outcome when the intent is genuinely
+  not readable - especially when the two halves do opposite things.
+
+## [1.30.1] — 2026-08-02
+
+### Fixed
+- **Stick-to-mouse Speed 255 was the SLOWEST setting, not the fastest.**
+  Validation treated 0xFF as the "unset" fill and reset it to 0, which means
+  "use the default" - so the top of the range silently became 600 counts/s. The
+  sentinel was never needed: a slot saved before these fields existed has the
+  feature itself clamped to off, so its speed value is never read.
+- **Typed values above a setting's range wrapped instead of clamping.** The
+  min/max on a number box only style the spinner; a typed value went through
+  and was then masked to the field width, so entering 2000 sent 208. Values are
+  now clamped to the declared range and the box is updated to show what was
+  actually sent.
+
+### Changed
+- **Speed is now mouse counts per second directly, 0-20000** (was a byte
+  holding tenths, capping the feature at 2550/s - short for a fast-turning
+  game). **Existing values will read low after this update: multiply your old
+  number by 10.**
+
+## [1.30.0] — 2026-08-02
+
+### Added
+- **Stick to Mouse.** Drive the mouse pointer from the right or left stick, the
+  way gyro aiming already can. Both feed the same accumulator, so the stick can
+  do the large turns while the gyro does the fine aim - the usual reason to want
+  this. The chosen stick is centred in the report the game sees, so the game
+  does not also turn from it.
+  - **Speed** in counts per second at full tilt (stored /10; 0 = 600/s).
+  - **Deadzone** as a percent of full tilt, applied radially rather than
+    per-axis so a diagonal push just past the threshold does not jump. Without
+    it a resting stick makes the view creep, because a mouse never stops.
+  - **Response curve** as an exponent (10 = linear, 18 = default). A linear
+    stick is twitchy at the centre and slow at the edge; the curve is what makes
+    this feel like a mouse rather than a joystick. It is applied to the
+    magnitude, not per axis, so diagonals are not bent toward the axes.
+  - **Invert** per axis.
+  - Sub-count movement is carried between ticks, so slow stick pressure still
+    moves the pointer instead of being truncated to nothing.
+  - Mutually exclusive with Flick Stick, which claims the right stick for
+    itself; selecting one clears the other rather than leaving two owners
+    writing the same report.
+  - Turning it on or off adds or removes the mouse HID interface, so it
+    re-enumerates - the same as switching gyro output to mouse.
 
 ## [1.29.3] — 2026-08-02
 
@@ -84,6 +237,8 @@ Macro input fixes on top of 1.29.0.
 
 Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
 
+## [1.29.0] — 2026-08-22
+
 ### Added
 - **DualSense Edge Fn buttons and paddles as macro inputs.** All four sit in
   report byte 9 and were never decoded; they now join the logical button mask as
@@ -94,8 +249,6 @@ Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
   - A paddle with an assignment in the Sony app still sends that assignment: the
     controller applies its own mapping before the report reaches the dongle.
   - A standard DualSense never sets these bits, so decoding them costs nothing.
-
-## [1.29.0] — 2026-08-22
 
 ## [1.28.4] — 2026-08-22
 

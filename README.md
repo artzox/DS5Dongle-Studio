@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.29.3**
+**Version 1.31.1**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.29.3-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.31.1-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -276,7 +276,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.29.3.uf2` (Pico 2 W) or `ds5-v1.29.3-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.31.1.uf2` (Pico 2 W) or `ds5-v1.31.1-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1209,6 +1209,30 @@ Because it rewrites the stick values in the report itself it works everywhere, a
 it composes with gyro aiming — the stick is inverted first, then the gyro delta is
 added on top with its own invert. *(New in 1.18.21.)*
 
+### Stick to Mouse *(new in 1.30.0)*
+Drives the mouse from a stick, for games that aim better with a mouse than with a
+stick — or alongside gyro aiming, with the stick doing the large turns and the
+gyro the fine aim. Both paths feed the same mouse, so they add rather than fight.
+
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| Drive the mouse from a stick | Off / Right / Left | Off | The chosen stick is centred in what the game receives, so the game does not also turn from it |
+| Speed | 0–20000 | 0 (= 600/s) | Mouse counts per second at full tilt. Raise until a full push turns as fast as you want |
+| Vertical speed | 0–20000 | 0 (= same as Speed) | Separate vertical rate. Games use a much smaller vertical aiming range, so the gain that feels right for turning is usually too fast for looking up and down — try half of Speed |
+| Deadzone | 0–50 % | 8 | Sticks rest slightly off centre and a mouse never stops, so without a deadzone the view creeps. Applied radially, so diagonals behave |
+| Response curve | 10–40 | 18 | Exponent ×10. 10 is linear — twitchy at the centre, slow at the edge. 18 gives fine control near centre and full speed at the edge |
+| Invert stick-to-mouse | X / Y / both | off | Per axis, independent of the physical stick inversion above |
+
+Sub-count movement is carried between ticks, so slow stick pressure still moves
+the pointer instead of being truncated away.
+
+Three things worth knowing. It needs the mouse HID interface, so switching it on
+or off **re-enumerates the device**, exactly like setting gyro output to Mouse.
+It is **mutually exclusive with Flick Stick**, which also claims the right stick
+— choosing one clears the other rather than leaving both writing the same
+report. And as with gyro-to-mouse, a game that reads the pad *and* the mouse may
+need the controller hidden with HidHide, or it receives the movement twice.
+
 ### Macros (new in 1.19.0)
 
 Bind a controller button press or a touchpad swipe to a keyboard combo. For example you can press
@@ -1283,6 +1307,12 @@ depending on which half your finger was on. Three ways to use that:
 | Touchpad click (right) | right half only |
 | Touchpad click | either half — the generic click |
 
+The half is decided when the press starts and held until release, so a finger
+that moves during the click cannot switch it, and a band of about 8% either side
+of the centre line is treated as neither half — a click there fires only a
+generic touchpad-click binding, rather than guessing. Aim for the outer thirds
+of the pad and the halves are unambiguous.
+
 Clicking a half records as that half alone, so the row reads *Touchpad click
 (left)* rather than naming two buttons for one press. The generic binding is still
 available from **Pick** when you want either half to fire the same macro, and the
@@ -1347,6 +1377,13 @@ Fn + face and you get your macro *and* a profile switch.
 They behave like any other button otherwise: chords, hold, replace, keyboard,
 controller and mouse outputs all work, and a standard DualSense simply never sets
 them.
+
+Macro outputs cover the face buttons, L1/R1, L3/R3, L2/R2, **Create, Options,
+Touchpad click and the four D-pad directions**, plus keyboard keys and mouse
+actions. A D-pad output merges with whatever the player is holding: the injected
+direction wins on its own axis and the other axis is left alone, so "press Up"
+presses Up even mid-lean. PS and Mute are not offered — PS collides with the
+PS-shortcut feature, and Mute toggles a state rather than acting as a button.
 
 *Hide input from game* works on these too, so an Fn button or paddle bound to a
 macro can be kept from reaching the game like any other button.
@@ -1690,9 +1727,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.29.3.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.29.3)
-- `ds5-v1.29.3-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.31.1.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.31.1)
+- `ds5-v1.31.1-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

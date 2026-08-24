@@ -277,6 +277,14 @@ const SECTIONS = [
   { title: 'Right Stick', fields: [
     [0x65,'rstick_invert','u8','Invert right stick','bits',['X (horizontal)','Y (vertical)']],
   ]},
+  { title: 'Stick to Mouse', fields: [
+    [0x76,'stick_mouse','u8','Drive the mouse from a stick','select',{0:'Off',1:'Right stick',2:'Left stick'}],
+    [0x77,'stick_mouse_sens','u16','Speed \u2014 mouse counts/sec at full tilt (0 = 600)','number',[0,20000]],
+    [0x66,'stick_mouse_sens_y','u16','Vertical speed (0 = same as above)','number',[0,20000]],
+    [0x78,'stick_mouse_deadzone','u8','Deadzone (% of full tilt)','number',[0,50]],
+    [0x79,'stick_mouse_curve','u8','Response curve \u00d710 (10 = linear, 18 = default)','number',[10,40]],
+    [0x7a,'stick_mouse_invert','u8','Invert stick-to-mouse','bits',['X (horizontal)','Y (vertical)']],
+  ]},
   { title: 'Advanced — BT Latency (experimental)', fields: [
     [0x1b,'bt_flush_timeout','u16','BT Flush Timeout (0=off)','select',{0:'Off (reliable)',4:'~2.5ms (low latency)',6:'~3.75ms',10:'~6.25ms',16:'~10ms'}],
     [0x1c,'bt_qos_latency_us','u16','BT QoS Latency (0=off)','select',{0:'Off',5000:'5ms (aggressive)',10000:'10ms',15000:'15ms',20000:'20ms (relaxed)'}],
@@ -815,6 +823,16 @@ async function readAll(){
   // ENUM_FIELDS/kbdIfaceNeeded comparison used a stale baseline, so the next save
   // could trigger a reconnect that was not needed or skip one that was.
   savedSnapshot = {...fresh};
+}
+
+// Clamp a number input to its declared range and reflect the result in the box.
+function cfgClampNum(el, min, max, isFloat){
+  let v = isFloat ? parseFloat(el.value) : parseInt(el.value, 10);
+  if (!isFinite(v)) v = min;
+  if (v < min) v = min;
+  if (v > max) v = max;
+  if (String(v) !== String(el.value)) el.value = v;   // show what will be sent
+  return v;
 }
 
 async function writeField(fieldId, type, value){
@@ -2281,6 +2299,12 @@ async function saveAll(){
     if (!needReconnect && ((+savedSnapshot.gyro_output >= 1) !== (+config.gyro_output >= 1))) {
       needReconnect = true;
     }
+    // Stick-to-mouse brings the same interface up. Mirrors
+    // usb_mouse_iface_needed() in macro.h - keep the two in step, or turning it
+    // on adds an interface the host is never told to re-read.
+    if (!needReconnect && ((+savedSnapshot.stick_mouse >= 1) !== (+config.stick_mouse >= 1))) {
+      needReconnect = true;
+    }
 
     if (!needReconnect){
       // No enumeration-time change — settings are already applied live. Just
@@ -2342,11 +2366,15 @@ async function readDiag(){
     try { ke = await readField(0x3c, 'u8'); } catch(e) {}
     let rl = null, rr = null, rf = null;
     try { rl = await readField(0x3d, 'u8'); rr = await readField(0x3e, 'u8'); rf = await readField(0x3f, 'u8'); } catch(e) {}
+    // Touchpad-click diagnostics: where the finger landed, how many clicks the
+    // firmware has seen, and which half the last one resolved to.
+    let padx = null, padinfo = null;
+    try { padx = await readField(0x7b, 'u16'); padinfo = await readField(0x7c, 'u8'); } catch(e) {}
     // Battery (0x68), read from the DualSense input report. (The auto-haptics
     // meters 0x69-0x6b now live on the Haptics tab, read by readAhMeter().)
     let bat = null;
     try { bat = await readField(0x68, 'u8'); } catch(e) {}
-    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
+    return {padx, padinfo, br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
   } catch(e){ return {br:'err', ch:'err', rssi:null, gy:null, sy:null, c01:null, c23:null, ke:null, rl:null, rr:null, rf:null, bat:null}; }
 }
 function rssiLabel(r){
@@ -2409,6 +2437,10 @@ async function refreshDiag(){
       if (d.ke !== null && d.ke !== undefined)
         extra += `<br>Push-back envelope: ${d.ke}/255  (must rise with rumble/gunfire while AT-engaged; kick fires at >=32 - if this stays 0 during rumble, the selected source isn't producing signal)`;
     }
+    if (d.padx !== null && d.padx !== undefined) {
+      const half = ['unqualified (centre band, or no finger)','LEFT','RIGHT'][d.padinfo & 3] || '?';
+      extra += `<br>Touchpad click: last finger-down x=${d.padx}/1919, clicks seen=${(d.padinfo >> 2) & 63}, last half=<b>${half}</b>  (the half is taken from where the finger LANDED, not from the position while pressing. Click each side a few times: the count should rise by exactly one per click and the half should match the side you used)`;
+    }
     if (d.rl !== null && d.rl !== undefined) {
       const rq = [];
       if (d.rf & 1) rq.push('EnableRumbleEmulation');
@@ -2455,6 +2487,7 @@ const SECTION_TAB = {
   'Native Haptics Filter':'haptics',
   'Gyro Aiming':'gyro',
   'Right Stick':'gyro',
+  'Stick to Mouse':'gyro',
   'Device & Connection':'device',
   'Advanced — BT Latency (experimental)':'device',
   'Macros':'macros',
@@ -2802,7 +2835,13 @@ function outBtnFromMask(mask){
 }
 
 const MACRO_OUT_BTNS = ['Keyboard','Cross','Circle','Square','Triangle','L1','R1','L3','R3','L2','R2',
-                        'Left click','Right click','Middle click','Scroll up','Scroll down'];
+                        'Left click','Right click','Middle click','Scroll up','Scroll down',
+                        // 16+ : controller buttons appended after the mouse block, matching
+                        // the T2BTN_* enum in src/config.h. They start at 16 rather than
+                        // continuing from 11 because 11-15 are already the mouse outputs in
+                        // every saved macro.
+                        'Create','Options','Touchpad click',
+                        'D-pad Up','D-pad Down','D-pad Left','D-pad Right'];
 // Index 11+ are MOUSE actions, matching MOUT_* in src/macro.h. The split is by
 // value range so the firmware's controller loop never sees them.
 const MOUT_FIRST = 11, MOUT_LAST = 15;
@@ -2874,18 +2913,26 @@ function macroButtonMask(d){
   if (b2 & 0x20) m |= 1<<20;   // Fn (right)
   if (b2 & 0x40) m |= 1<<21;   // Left paddle
   if (b2 & 0x80) m |= 1<<22;   // Right paddle
-  // Qualify a touchpad click by which half the finger is on - mirrors
-  // button_mask() in src/input_buttons.h, including leaving it unqualified
-  // when the switch fires with no finger reported (knuckle, pad edge).
-  if ((m & (1<<17)) && d.byteLength >= 36){
-    const t0 = d.getUint8(32);
-    if ((t0 & 0x80) === 0){
-      const x = d.getUint8(33) | ((d.getUint8(34) & 0x0F) << 8);
-      m |= (x > (TOUCH_X_MAX / 2)) ? (1<<24) : (1<<23);
-    }
-  }
+  // The touchpad-click HALF is NOT decided here. The firmware takes it from
+  // where the finger LANDED (see macro.cpp), because the position while the
+  // pad is being pressed is unreliable - the contact patch spreads and its
+  // centre moves. Deriving it here from the current report would let recording
+  // capture the opposite half from the one the firmware matches, so the macro
+  // would never fire. macroPadHalf() below supplies it from the touch-down
+  // position the recorder already tracks.
   return m >>> 0;
 }
+// Which half a click belongs to, from where the finger LANDED - the same rule
+// and the same neutral band as pad_half_from_touch() in src/macro.cpp. Keep the
+// two in step: if they disagree, a recorded chord will not match at play time.
+function macroPadHalf(x0){
+  if (x0 === undefined || x0 === null) return 0;
+  const HALF = Math.floor(TOUCH_X_MAX / 2), BAND = Math.floor(TOUCH_X_MAX / 12);
+  if (x0 > HALF + BAND) return 1<<24;
+  if (x0 < HALF - BAND) return 1<<23;
+  return 0;                      // centre band: unqualified, as the firmware does
+}
+
 function macroChordName(mask){
   if (!mask) return '';
   return BTN.filter(b => (mask & b[1])).map(b => b[2]).join(' + ');
@@ -3153,11 +3200,21 @@ window._macroPickIn = window._macroPickIn || null; // {row, mask} manual trigger
 // The Pick panel for a CONTROLLER output: the same eleven choices the dropdown
 // carried, but reached the same way as the keyboard picker so a row asks its
 // question once.
-function macroPickBtnHTML(i, m){ return macroPickOutHTML(i, m, 1, MOUT_FIRST - 1, 'Which controller button should this macro send?'); }
-function macroPickOutHTML(i, m, lo, hi, prompt){
+// Controller outputs are NOT one contiguous range any more: 1-10 are the
+// originals, 11-15 are the mouse block, and 16+ are the buttons appended after
+// it. Pass an explicit list rather than a lo/hi span, or the new ones are
+// unreachable and the mouse actions appear in the controller picker.
+function macroOutBtnValues(){
+  const v = [];
+  for (let k = 1; k < MOUT_FIRST; k++) v.push(k);
+  for (let k = MOUT_LAST + 1; k < MACRO_OUT_BTNS.length; k++) v.push(k);
+  return v;
+}
+function macroPickBtnHTML(i, m){ return macroPickOutHTML(i, m, macroOutBtnValues(), 'Which controller button should this macro send?'); }
+function macroPickOutHTML(i, m, values, prompt){
   let h = '<div style="border:1px solid #06a;background:#001a2a;padding:8px;border-radius:6px;margin:6px 0">';
   h += '<div style="font-size:12px;color:var(--sub);margin-bottom:6px">' + prompt + '</div>';
-  for (let k = lo; k <= hi; k++){
+  for (const k of values){
     const on = (m.out_btn|0) === k;
     h += '<button class="btn' + (on ? '' : ' btn-outline') + '" style="padding:2px 8px;margin:0 4px 4px 0;font-size:12px" ' +
          'onclick="macroSetOutBtn(' + i + ', ' + k + ');macroPickClose()">' + MACRO_OUT_BTNS[k] + '</button>';
@@ -3791,6 +3848,9 @@ async function macroRecordStop(){
     // nothing here: any of them means something was held, so a swipe still
     // loses to a press, and a plain swipe still sets none of them.
     let held = (st.peak >>> 0);
+    // Qualify a recorded touchpad click from the finger-down position, matching
+    // the firmware. st.tX0 is the landing point the touch tracking above keeps.
+    if (held & (1<<17)) held |= macroPadHalf(st.tX0);
     // Record the HALF alone, not "click + left". The firmware still reports the
     // generic bit on every click, so a chord naming only the half matches (and
     // outranks a generic binding); carrying both bits would just be a chord
@@ -4272,7 +4332,7 @@ function macroRender(){
       h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickInHTML(i) + '</td></tr>';
     }
     if (pickOpen && macroOutKind(i, m) === 2){
-      h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickOutHTML(i, m, MOUT_FIRST, MOUT_LAST, 'Which mouse action should this macro send?') + '</td></tr>';
+      h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickOutHTML(i, m, Array.from({length: MOUT_LAST - MOUT_FIRST + 1}, (_, n) => MOUT_FIRST + n), 'Which mouse action should this macro send?') + '</td></tr>';
     } else if (pickOpen && macroOutKind(i, m) === 1){
       // Controller output: pick a BUTTON, not a key combo.
       h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickBtnHTML(i, m) + '</td></tr>';
@@ -4715,7 +4775,13 @@ function fieldRowHTML(f){
     const step = (type==='f32') ? '0.05' : '1';
     const val = (config[key]??0);
     const shown = (type==='f32') ? Number(val).toFixed(2) : val;
-    html += `<input type="number" min="${min}" max="${max}" step="${step}" value="${shown}" onchange="config['${key}']=${type==='f32'?'parseFloat(this.value)':'+this.value'};(window._dirty=window._dirty||{})['${key}']=1">`;
+    // CLAMP to the declared range. min/max on a number input only style the
+    // spinner - a typed value goes straight through, and writeField() then
+    // masks it to the field width. That silently turned a typed 2000 into 208
+    // (2000 & 0xFF) rather than the maximum, so the setting appeared to behave
+    // backwards. Clamp here and write the clamped value back into the box, so
+    // what is shown is what was sent.
+    html += `<input type="number" min="${min}" max="${max}" step="${step}" value="${shown}" onchange="config['${key}']=cfgClampNum(this, ${min}, ${max}, ${type === 'f32'});(window._dirty=window._dirty||{})['${key}']=1">`;
   }
   html += `</div></div>`;
   if(key === 'ce_r2_yield' || key === 'ce_l2_yield'){
@@ -4778,7 +4844,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.29.3</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.31.1</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
