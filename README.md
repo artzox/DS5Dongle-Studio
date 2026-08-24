@@ -70,6 +70,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Gyro as a mouse (new in 1.24.0)](#gyro-as-a-mouse-new-in-1240)
   - [Flick Stick (new in 1.24.0)](#flick-stick-new-in-1240)
   - [Right Stick Inversion](#right-stick-inversion)
+  - [Stick to Mouse (new in 1.30.0)](#stick-to-mouse-new-in-1300)
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
   - [Advanced — BT Latency (experimental)](#advanced--bt-latency-experimental)
