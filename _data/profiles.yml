@@ -28,6 +28,11 @@
   desc: "Auto-haptics from game audio, native passthrough 65%, converted rumble 50."
   wake: true
 
+- game: "Dishonored 2"
+  file: "/shared/profiles/Dishonored2_mouse_gyro_r_stick_macros.json"
+  desc: "Auto-haptics from game audio, native passthrough 65%, converted rumble 50, mouse-gyro, mouse R-stick, QuickSave/Quickload macros."
+  wake: true
+
 - game: "FPS (generic preset)"
   file: "/shared/profiles/FPS.json"
   desc: "Auto-haptics from game audio, full native passthrough, converted rumble 50, Stick-Gyro."
