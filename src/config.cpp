@@ -550,8 +550,22 @@ uint8_t slot_activate(uint8_t idx, bool &needs_reenum, uint8_t &fail_stage) {
     if (!slot_read(idx, nm, slot_body)) { fail_stage = 2; return 0; }
     // Fields that change USB descriptors / enumeration-time behavior; if any
     // differ, the caller should issue the reconnect command (0x03) afterwards.
-    const Config_body &o = config.body;
-    const Config_body &n = slot_body;
+    //
+    // COMPARE CLAMPED VALUES ON BOTH SIDES. config_valid() normalises the LIVE
+    // config only, so comparing it against the RAW stored body made any byte a
+    // slot holds unclamped differ forever - and a slot saved before a field
+    // existed carries 0xFF there. gyro_output is the clearest case: 0xFF reads
+    // as ">= 1", i.e. "mouse interface needed", while the live clamped value is
+    // 0, so every activation of that slot looked like an interface change and
+    // reconnected the device. Re-activating the SAME slot did it too, because
+    // the stored bytes never change. Normalise first, then compare: apply the
+    // slot, clamp it, and diff against a copy of what was live before.
+    static Config_body prev_body;   // static: keep it off the USB task stack
+    prev_body = config.body;
+    config.body = slot_body;
+    config_valid();                 // clamp 0xFF fills from older slots
+    const Config_body &o = prev_body;
+    const Config_body &n = config.body;
     needs_reenum = (o.controller_mode      != n.controller_mode)      ||
                    (o.polling_rate_mode    != n.polling_rate_mode)    ||
                    (o.audio_buffer_length  != n.audio_buffer_length)  ||
@@ -571,8 +585,6 @@ uint8_t slot_activate(uint8_t idx, bool &needs_reenum, uint8_t &fail_stage) {
                    // The mouse is its own interface, and it implies the keyboard -
                    // so the keyboard test above does not cover losing the mouse.
                    (usb_mouse_iface_needed(o) != usb_mouse_iface_needed(n));
-    config.body = slot_body;
-    config_valid(); // clamp anything out of range (e.g. slot saved by older fw)
     active_profile_set(idx); // record the loaded slot (RAM) for the portal readout
     // Persist. flash_safe_execute parks core1 with a 1 s timeout; at game
     // launch core1 is at its busiest (BT stream + haptics), which is exactly

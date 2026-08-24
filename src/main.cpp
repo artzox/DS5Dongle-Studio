@@ -161,6 +161,20 @@ static inline void macro_apply_buttons(uint8_t *r) {
         if (sup & BTN_PS)       r[9] &= (uint8_t) ~0x01u;
         if (sup & BTN_TOUCHPAD) r[9] &= (uint8_t) ~0x02u;
         if (sup & BTN_MUTE)     r[9] &= (uint8_t) ~0x04u;
+        // DualSense Edge Fn buttons and paddles. Without these a REPLACE macro
+        // bound to one of them fired but could not hide the press, so the game
+        // still saw whatever the paddle was mapped to.
+        if (sup & BTN_LEFT_FN)   r[9] &= (uint8_t) ~0x10u;
+        if (sup & BTN_RIGHT_FN)  r[9] &= (uint8_t) ~0x20u;
+        if (sup & BTN_LEFT_PAD)  r[9] &= (uint8_t) ~0x40u;
+        if (sup & BTN_RIGHT_PAD) r[9] &= (uint8_t) ~0x80u;
+        // A qualified touchpad click has no report bit of its own - it IS the
+        // click bit plus a finger position - so suppressing one clears the
+        // click. Only ever engaged while that half is actually being pressed,
+        // so this cannot hide a click on the other half. The touch coordinates
+        // are left alone: a finger resting on the pad without a click is a
+        // normal thing for a game to see.
+        if (sup & (BTN_PAD_CLICK_LEFT | BTN_PAD_CLICK_RIGHT)) r[9] &= (uint8_t) ~0x02u;
         // A suppressed D-pad direction has to rewrite the HAT NIBBLE, which is
         // an enum (0-7 plus 8 = centred), not a bitfield. Only the exact
         // direction is cleared; a diagonal keeps its other half.
