@@ -148,18 +148,15 @@ static inline uint32_t button_mask(const uint8_t *r, uint16_t len) {
     if (b2 & 0x40u) m |= BTN_LEFT_PAD;
     if (b2 & 0x80u) m |= BTN_RIGHT_PAD;
 
-    // Qualify the pad click with the half the finger is on. Needs the touch
-    // block, which lives further into the report than the 10 bytes checked
-    // above - a shorter report simply keeps the unqualified click.
-    if ((m & BTN_TOUCHPAD) && len >= (uint16_t) (RPT_TOUCH0 + 4)) {
-        const uint8_t *t = r + RPT_TOUCH0;
-        if ((t[0] & 0x80u) == 0u) {                       // bit7 SET = lifted
-            const uint16_t x = (uint16_t) (t[1] | ((uint16_t) (t[2] & 0x0Fu) << 8));
-            m |= (x > (uint16_t) (TOUCH_X_MAX / 2)) ? BTN_PAD_CLICK_RIGHT
-                                                    : BTN_PAD_CLICK_LEFT;
-        }
-    }
-
+    // NOTE: the touchpad-click HALF is deliberately NOT decided here.
+    // Sampling the finger position at CLICK time is the worst possible moment:
+    // the finger is being pressed hard, so the contact patch spreads and its
+    // reported centre shifts, and the switch chatters on top of that. The half
+    // is decided in macro.cpp from the position at FINGER-DOWN, which happens
+    // milliseconds before the switch closes and is stable - the same thing
+    // DS4Windows does with its touchpad zones. button_mask() stays a pure
+    // function of one report; the half needs history, so it lives with the
+    // other stateful input handling.
     return m;
 }
 

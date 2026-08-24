@@ -59,6 +59,7 @@ bool macro_any_mouse_output(uint32_t disable_mask);
 
 static inline bool usb_mouse_iface_needed(const Config_body &c) {
     return c.gyro_output >= 1              // 1 = mouse, 2 = mouse + flick stick
+        || c.stick_mouse >= 1              // 1 = right stick, 2 = left stick
         || macro_any_mouse_output(c.macro_disable);
 }
 
@@ -192,7 +193,11 @@ constexpr uint8_t MACRO_HOLD_CS_DEFAULT = 75;
 // buttons. Continuing the same field keeps one output list in the portal, and
 // the split is by VALUE RANGE so main.cpp's controller loop simply never sees
 // them. Clicks are held while the input is held; scroll is a tick per press.
-constexpr uint8_t MOUT_FIRST      = T2BTN_COUNT; // 11
+// 11, fixed. It was T2BTN_COUNT, which happened to be 11 when the mouse
+// outputs were added - but the two stopped being the same number the moment
+// controller buttons were appended past the mouse block, and these values are
+// PERSISTED in every saved macro.
+constexpr uint8_t MOUT_FIRST      = 11;
 constexpr uint8_t MOUT_LEFT       = 11;
 constexpr uint8_t MOUT_RIGHT      = 12;
 constexpr uint8_t MOUT_MIDDLE     = 13;
@@ -333,5 +338,12 @@ int8_t   macro_mouse_take_scroll();   // consumes: only call once the report wil
 // uses it to avoid interleaving its F15 keystroke with a macro on the shared
 // keyboard instance.
 bool macro_busy();
+
+// Touchpad-click diagnostics for the portal: X where the finger last landed
+// (0-1919), how many click presses have been seen, and which half the last one
+// resolved to (1 = left, 2 = right, 0 = unqualified). Exists because this is
+// not something that can be reasoned about from the code - the pad's behaviour
+// at press time has to be measured on real hardware.
+void macro_pad_debug(uint16_t &x, uint8_t &presses, uint8_t &last_half);
 
 #endif // DS5_BRIDGE_MACRO_H

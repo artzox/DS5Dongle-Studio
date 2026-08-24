@@ -78,6 +78,10 @@ static inline void t2_press(uint8_t *r, uint8_t btn) {
         // that trigger is never reduced by the synthetic press.
         case T2BTN_L2:       r[8] |= 0x04u; if (r[4] < 255u) r[4] = 255u; break;
         case T2BTN_R2:       r[8] |= 0x08u; if (r[5] < 255u) r[5] = 255u; break;
+        case T2BTN_CREATE:   r[8] |= 0x10u; break;
+        case T2BTN_OPTIONS:  r[8] |= 0x20u; break;
+        case T2BTN_TOUCHPAD: r[9] |= 0x02u; break;
+        // D-pad handled by the hat merge in macro_apply_buttons(), not here.
         default: break;
     }
 }
@@ -191,10 +195,42 @@ static inline void macro_apply_buttons(uint8_t *r) {
         }
     }
     if (inj) {
+        // D-pad outputs FIRST, because the hat is an enum: the four directions
+        // share one nibble, so they cannot be OR-ed in the way every other
+        // button can. Collect the injected directions, merge them with whatever
+        // the player is physically holding, and re-encode once. An injected
+        // direction WINS over a held one on the same axis - a macro that says
+        // "press Up" should press Up even if the player is leaning down, rather
+        // than cancelling to neutral. Opposite injected directions cancel,
+        // since the hat has no way to express both.
+        constexpr uint32_t DP_UP    = 1u << (T2BTN_DPAD_UP    - 1);
+        constexpr uint32_t DP_DOWN  = 1u << (T2BTN_DPAD_DOWN  - 1);
+        constexpr uint32_t DP_LEFT  = 1u << (T2BTN_DPAD_LEFT  - 1);
+        constexpr uint32_t DP_RIGHT = 1u << (T2BTN_DPAD_RIGHT - 1);
+        if (inj & (DP_UP | DP_DOWN | DP_LEFT | DP_RIGHT)) {
+            const uint8_t hat = (uint8_t) (r[7] & 0x0Fu);
+            uint32_t dirs = HAT_TO_DPAD[hat > 8 ? 8 : hat];   // what is held now
+            if (inj & (DP_UP | DP_DOWN)) {                    // injected axis wins
+                dirs &= ~(BTN_DPAD_UP | BTN_DPAD_DOWN);
+                if (inj & DP_UP)   dirs |= BTN_DPAD_UP;
+                if (inj & DP_DOWN) dirs |= BTN_DPAD_DOWN;
+                if ((inj & DP_UP) && (inj & DP_DOWN)) dirs &= ~(BTN_DPAD_UP | BTN_DPAD_DOWN);
+            }
+            if (inj & (DP_LEFT | DP_RIGHT)) {
+                dirs &= ~(BTN_DPAD_LEFT | BTN_DPAD_RIGHT);
+                if (inj & DP_LEFT)  dirs |= BTN_DPAD_LEFT;
+                if (inj & DP_RIGHT) dirs |= BTN_DPAD_RIGHT;
+                if ((inj & DP_LEFT) && (inj & DP_RIGHT)) dirs &= ~(BTN_DPAD_LEFT | BTN_DPAD_RIGHT);
+            }
+            uint8_t out = 8;                                   // centred
+            for (uint8_t i = 0; i < 8; i++) if (HAT_TO_DPAD[i] == dirs) { out = i; break; }
+            r[7] = (uint8_t) ((r[7] & 0xF0u) | out);
+        }
         // inj is indexed by the T2Button enum, shared with the two-stage
         // trigger so there is exactly one place that knows these bit positions.
         for (uint8_t b = 1; b < T2BTN_COUNT; b++) {
             if (!(inj & (1u << (b - 1)))) continue;
+            if (macro_is_mouse_out(b)) continue;   // 11-15 are mouse, not buttons
             // A trigger output carries ANALOG travel when a trigger drove it, so
             // L2 -> R2 stays variable instead of collapsing to an on/off switch.
             // macro_analog_out() returns 255 for a button-driven trigger, which
@@ -318,7 +354,17 @@ static int32_t g_gm_acc_x = 0, g_gm_acc_y = 0;   // leftover numerator, not coun
 static volatile int32_t g_gm_pend_x = 0, g_gm_pend_y = 0; // computed in the report
                                                           // path, sent from the loop
 
-void gyro_mouse_reset() { g_gm_acc_x = 0; g_gm_acc_y = 0; g_gm_pend_x = 0; g_gm_pend_y = 0; }
+// Latest position of whichever stick drives the mouse, 0-255 per axis, 128 at
+// rest. Written by the report path, consumed by gyro_mouse_task().
+static volatile uint8_t g_sm_stick_x = 128, g_sm_stick_y = 128;
+// Sub-count remainder, so slow stick movement still moves the pointer: the same
+// reason the gyro path carries one.
+static float g_sm_rem_x = 0.0f, g_sm_rem_y = 0.0f;
+static uint32_t g_sm_last_ms = 0;
+constexpr float STICK_MOUSE_SENS_DEFAULT = 600.0f;   // counts/second at full tilt
+
+void gyro_mouse_reset() { g_gm_acc_x = 0; g_gm_acc_y = 0; g_gm_pend_x = 0; g_gm_pend_y = 0;
+                          g_sm_rem_x = 0.0f; g_sm_rem_y = 0.0f; g_sm_last_ms = 0; }
 
 // A mouse is a DELTA device and the stick is an ABSOLUTE one, so they need
 // completely different scales. A stick deflection of dx is a steady turn RATE
@@ -509,6 +555,58 @@ void gyro_mouse_task() {
         }
     }
 
+    // --- Stick to mouse -----------------------------------------------------
+    // Runs every tick so movement is smooth and time-based rather than tied to
+    // however often reports happen to arrive.
+    if (cfg.stick_mouse >= 1) {
+        const uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (g_sm_last_ms == 0) g_sm_last_ms = now;
+        const uint32_t dms = now - g_sm_last_ms;
+        if (dms > 0) {
+            g_sm_last_ms = now;
+            float sx = ((float) g_sm_stick_x - 128.0f) / 127.0f;
+            float sy = ((float) g_sm_stick_y - 128.0f) / 127.0f;
+            if (cfg.stick_mouse_invert & 1) sx = -sx;
+            if (cfg.stick_mouse_invert & 2) sy = -sy;
+            // RADIAL deadzone, not per-axis: a per-axis one squares off the
+            // centre, so a diagonal push just past the threshold jumps.
+            const float mag = sqrtf(sx * sx + sy * sy);
+            const float dz = (float) cfg.stick_mouse_deadzone / 100.0f;
+            if (mag > dz && mag > 0.0001f) {
+                // Rescale past the deadzone so travel starts from zero rather
+                // than jumping to the deadzone value, then apply the curve to
+                // the MAGNITUDE and put the direction back. Curving each axis
+                // separately would bend diagonals toward the axes.
+                float t = (mag - dz) / (1.0f - dz);
+                if (t > 1.0f) t = 1.0f;
+                const float curve = (float) cfg.stick_mouse_curve / 10.0f;
+                const float scaled = powf(t, curve);
+                const float sens_x = (cfg.stick_mouse_sens ? (float) cfg.stick_mouse_sens
+                                                           : STICK_MOUSE_SENS_DEFAULT);
+                // 0 means "follow X", so one knob still works. The curve and the
+                // deadzone stay on the MAGNITUDE - only the final speed is per
+                // axis, so a diagonal keeps its direction and simply travels
+                // further horizontally than vertically, which is the point.
+                const float sens_y = (cfg.stick_mouse_sens_y ? (float) cfg.stick_mouse_sens_y
+                                                             : sens_x);
+                const float step = scaled * ((float) dms / 1000.0f);
+                const float ux = sx / mag, uy = sy / mag;
+                const float fx = ux * step * sens_x + g_sm_rem_x;
+                const float fy = uy * step * sens_y + g_sm_rem_y;
+                const int32_t ix = (int32_t) fx, iy = (int32_t) fy;
+                g_sm_rem_x = fx - (float) ix;
+                g_sm_rem_y = fy - (float) iy;
+                // Y passes through unnegated: stick Y is 0 = up and screen Y
+                // grows downward, so the two already agree - the same
+                // convention the gyro path documents below.
+                g_gm_pend_x += ix;
+                g_gm_pend_y += iy;
+            } else {
+                g_sm_rem_x = 0.0f; g_sm_rem_y = 0.0f;   // inside the deadzone: no creep
+            }
+        }
+    }
+
     int32_t dx = g_gm_pend_x, dy = g_gm_pend_y;
     const int8_t pending = macro_mouse_peek_scroll();
     // Send when anything changed: movement, a scroll tick, or a button going
@@ -554,6 +652,19 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
         g_fs_stick_x = d[2];
         g_fs_stick_y = d[3];
         d[2] = 128; d[3] = 128;   // the game must not also turn from the stick
+    }
+
+    // Stick to mouse. Same placement and reasoning as Flick Stick above: it runs
+    // before every gyro-mode early return, because this is a STICK feature and
+    // must work with gyro off. The chosen stick is centred in the report so the
+    // game does not also turn from it, and the conversion happens in
+    // gyro_mouse_task() where the mouse report and its remainder carry live.
+    if (cfg.stick_mouse == 1) {
+        g_sm_stick_x = d[2]; g_sm_stick_y = d[3];   // right
+        d[2] = 128; d[3] = 128;
+    } else if (cfg.stick_mouse == 2) {
+        g_sm_stick_x = d[0]; g_sm_stick_y = d[1];   // left
+        d[0] = 128; d[1] = 128;
     }
 
     if (cfg.gyro_mode == 0) return;

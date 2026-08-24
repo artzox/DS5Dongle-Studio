@@ -284,6 +284,37 @@ struct __attribute__((packed)) Config_body {
     // is far smaller than the horizontal one, so the same gain that feels right
     // for turning is usually too fast for looking up and down.
     uint8_t  gyro_sens_y;
+
+    // --- Stick to mouse (v1.30.0) ---------------------------------------------
+    // Drive the mouse from a STICK, the way gyro_output drives it from motion.
+    // Both feed the same accumulator in gyro_mouse_task(), so a game can be
+    // played with the stick doing the large turns and the gyro the fine aim -
+    // which is the usual reason to want this at all.
+    //   0 = off (default), 1 = right stick, 2 = left stick
+    // The chosen stick is CENTRED in the report the game sees, exactly as Flick
+    // Stick does, so the game does not also turn from it. Mutually exclusive
+    // with Flick Stick (gyro_output 2), which claims the right stick for itself;
+    // config_valid() enforces that rather than leaving two owners fighting.
+    uint8_t  stick_mouse;
+    // Counts per second at full deflection, stored DIRECTLY (not /10) so the
+    // ceiling is a real limit rather than an artifact of byte width: a byte
+    // capped this at 2550/s, which is short for a fast-turning game. 0 uses
+    // STICK_MOUSE_SENS_DEFAULT.
+    uint16_t stick_mouse_sens;
+    // Radial deadzone, percent of full deflection. Sticks rest a little off
+    // centre and a mouse never stops moving, so without this the view creeps.
+    uint8_t  stick_mouse_deadzone;
+    // Response curve exponent x10 (10 = linear, 20 = squared). A linear stick
+    // is twitchy at the centre and slow at the edge; the curve is what makes
+    // this feel like a mouse rather than a joystick.
+    uint8_t  stick_mouse_curve;
+    // Invert: bit0 = X, bit1 = Y.
+    uint8_t  stick_mouse_invert;
+    // Vertical speed, 0 = follow stick_mouse_sens (one knob, as before). Same
+    // convention and the same reason as gyro_sens_y: the vertical aiming range
+    // in a game is far smaller than the horizontal one, so a gain that feels
+    // right for turning is usually too fast for looking up and down.
+    uint16_t stick_mouse_sens_y;
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so
@@ -303,7 +334,25 @@ enum : uint8_t {
     // which the portal filters per trigger rather than by splitting the enum.
     T2BTN_L2       = 9,
     T2BTN_R2       = 10,
-    T2BTN_COUNT    = 11,
+    // Appended for macro outputs (v1.31.0). The list above was scoped for
+    // two-stage triggers; macros reused it and inherited the gap, so a macro
+    // could TRIGGER on Create, Options or a D-pad direction but never OUTPUT
+    // one. Appending keeps every saved profile's values meaning what they did.
+    // Values 11-15 are RESERVED: they are the mouse outputs (MOUT_* in
+    // macro.h), which were carved out of this same numbering. Saved macros
+    // already store 11-15 meaning "left click" and so on, so the controller
+    // buttons appended below must start ABOVE them - numbering these from 11
+    // would silently turn every saved mouse output into a gamepad button.
+    T2BTN_CREATE   = 16,
+    T2BTN_OPTIONS  = 17,
+    T2BTN_TOUCHPAD = 18,   // touchpad CLICK
+    // The D-pad is a hat ENUM in the report, not four bits, so these cannot be
+    // OR-ed in like the rest; see the merge in macro_apply_buttons().
+    T2BTN_DPAD_UP    = 19,
+    T2BTN_DPAD_DOWN  = 20,
+    T2BTN_DPAD_LEFT  = 21,
+    T2BTN_DPAD_RIGHT = 22,
+    T2BTN_COUNT      = 23,
 };
 enum : uint8_t {
     T2_AXIS_OFF      = 0,

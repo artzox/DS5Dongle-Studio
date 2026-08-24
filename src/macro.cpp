@@ -628,6 +628,59 @@ static uint32_t hold_ms_of(int idx) {
 
 // ============================== debounce ===================================
 
+// Touchpad click half, decided from where the finger LANDED.
+//
+// A press is two events: the finger touches the pad, then a moment later the
+// switch closes. Only the first is a clean read - by the time the switch
+// closes the finger is flattened against the pad, its reported centre has
+// moved, and the contacts are chattering. Sampling at click time therefore
+// gave a different half from one bounce to the next and fired both bindings.
+//
+// So: remember the half when the finger first touches, and hand that to the
+// click whenever it arrives. This is what DS4Windows does with touchpad zones,
+// and it is why it never had this problem. Diagnostics for the portal are
+// recorded alongside, because this is not something you can reason about from
+// the code - it has to be measured on hardware.
+static uint16_t g_dbg_touch_x  = 0;   // x at the last finger-down
+static uint8_t  g_dbg_presses  = 0;   // click press edges seen
+static uint8_t  g_dbg_last     = 0;   // 1 = left, 2 = right, 0 = unqualified
+
+void macro_pad_debug(uint16_t &x, uint8_t &presses, uint8_t &last_half) {
+    x = g_dbg_touch_x; presses = g_dbg_presses; last_half = g_dbg_last;
+}
+
+// The half for the CURRENT touch, from where the finger landed. touch_task()
+// already records that position in g_touch_x0 for gesture detection, so this
+// reads the same value rather than tracking the finger a second time - one
+// definition of "where the press started", shared by gestures and clicks.
+static uint32_t pad_half_from_touch(void) {
+    if (!g_touch_down) return 0;                      // no finger, no half
+    constexpr uint16_t HALF = TOUCH_X_MAX / 2;
+    constexpr uint16_t BAND = TOUCH_X_MAX / 12;       // neutral centre band
+    if (g_touch_x0 > (uint16_t) (HALF + BAND)) return BTN_PAD_CLICK_RIGHT;
+    if (g_touch_x0 < (uint16_t) (HALF - BAND)) return BTN_PAD_CLICK_LEFT;
+    return 0;
+}
+
+// Apply the finger-down half to the (already debounced) click bit.
+static uint32_t apply_pad_half(uint32_t mask) {
+    constexpr uint32_t HALVES = BTN_PAD_CLICK_LEFT | BTN_PAD_CLICK_RIGHT;
+    mask &= ~HALVES;                                  // never trust the report
+    static uint32_t held = 0;
+    if (mask & BTN_TOUCHPAD) {
+        if (held == 0) {
+            held = pad_half_from_touch();
+            g_dbg_touch_x = g_touch_x0;
+            g_dbg_presses++;
+        }
+        mask |= held;
+        g_dbg_last = (held == BTN_PAD_CLICK_LEFT) ? 1 : (held == BTN_PAD_CLICK_RIGHT) ? 2 : 0;
+    } else {
+        held = 0;                                      // press over
+    }
+    return mask;
+}
+
 static uint32_t debounce(uint32_t raw, uint32_t now) {
     uint32_t out = raw;
     for (uint8_t i = 0; i < 32; i++) {
@@ -902,10 +955,28 @@ void macro_on_input(const uint8_t *report, uint16_t len) {
     if (wake_host_is_suspended()) { macro_reset(); return; }
 
     const uint32_t now  = now_ms();
-    const uint32_t mask = debounce(button_mask(report, len), now);
+    // ORDER MATTERS: debounce FIRST, then latch the half.
+    //
+    // The pad's switch chatters - contacts break and remake within a few
+    // milliseconds of a press. Latching before the debounce meant every bounce
+    // looked like a fresh press: the latch cleared, and because the finger's
+    // contact patch shifts slightly between bounces, the next edge could latch
+    // the OTHER half. One press fired both bindings, the second for only a
+    // split second. It also re-armed the chord on every bounce, which reset the
+    // long-press timer and made a hold fire its short action immediately.
+    //
+    // Debouncing first hides the chatter, so the latch sees one clean press and
+    // holds one half for its whole duration. This is what DS4Windows does:
+    // decide the zone at finger-down, on a debounced press.
+    const uint32_t raw_mask = debounce(button_mask(report, len), now);
+
+    // touch_task first: it maintains g_touch_x0 (where the finger landed), which
+    // the click half is derived from. Running it after would use the PREVIOUS
+    // touch's landing point for the click that just arrived.
+    touch_task(report, len, now, disable);
+    const uint32_t mask = apply_pad_half(raw_mask);
 
     motion_task(report, len, mask, disable);
-    touch_task(report, len, now, disable);
     hold_task(report, len, mask, disable);
 
     if (g_chord != 0) {
@@ -976,6 +1047,7 @@ void macro_reset() {
     // key still down leaves it stuck at the host.
     g_hold_n = 0;
     g_suppress = g_inject = 0;
+    apply_pad_half(0);   // drop any frozen click half
     g_sup_lstick = g_sup_rstick = false;
     memset(g_stick_latch, 0, sizeof(g_stick_latch));
     // Mouse output has to be dropped for the same reason as the keys: a click

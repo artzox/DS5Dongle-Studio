@@ -227,6 +227,25 @@ void config_valid() {
     if (body->t2_button >= T2BTN_COUNT) body->t2_button = T2BTN_NONE;
     if (body->gyro_sens_y > 100) body->gyro_sens_y = 0;   // 0 = follow X
     if (body->gyro_output > 2) body->gyro_output = 0;   // 0xFF fill from an older slot -> stick
+    // Stick-to-mouse. Every one of these must be clamped here: a slot saved
+    // before the fields existed carries 0xFF, and slot_activate() compares
+    // CLAMPED values on both sides, so an unclamped byte would make every
+    // activation of that slot look like a mouse-interface change.
+    if (body->stick_mouse > 2) body->stick_mouse = 0;
+    // NO 0xFF sentinel here: it made 255 - the fastest setting - silently mean
+    // 0, i.e. the SLOWEST. The fill from an older slot is harmless anyway,
+    // because stick_mouse itself clamps to 0 (off) in that slot, so the speed
+    // is never used. 0 still means "use the default"; 1..255 are real speeds.
+    if (body->stick_mouse_sens > 20000) body->stick_mouse_sens = 0;   // 0xFFFF fill -> default
+    if (body->stick_mouse_sens_y > 20000) body->stick_mouse_sens_y = 0; // 0 = follow X
+    if (body->stick_mouse_deadzone > 50) body->stick_mouse_deadzone = 8;
+    if (body->stick_mouse_curve == 0xFF || body->stick_mouse_curve < 10 ||
+        body->stick_mouse_curve > 40) body->stick_mouse_curve = 18;
+    if (body->stick_mouse_invert > 3) body->stick_mouse_invert = 0;
+    // Flick Stick also owns the right stick. Two owners would both write the
+    // report and both centre it; the explicit stick mode yields, since it is
+    // the one the user just chose from a list that names the conflict.
+    if (body->gyro_output == 2 && body->stick_mouse == 1) body->stick_mouse = 0;
     // Flick calibration. Anything outside a plausible range - including 0, and
     // including the 0xFFFF an older slot's tail fill produces - becomes a usable
     // default rather than disabling the flick. A zero here meant selecting
