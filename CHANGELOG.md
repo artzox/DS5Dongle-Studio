@@ -1,9 +1,46 @@
 # Changelog
 
-## [1.29.1] — 2026-08-02
+All notable changes to this project are documented here.
 
-Supersedes the 1.29.0 development build, which was not
-released.
+## [1.29.3] — 2026-08-02
+
+### Fixed
+- **Every slot activation re-enumerated the device.** The check for whether a
+  slot changes something enumeration-critical compared the LIVE config, which
+  `config_valid()` has normalised, against the slot's RAW stored bytes. Any byte
+  a slot holds unclamped therefore differed forever - and a slot saved before a
+  field existed carries 0xFF there. `gyro_output` is the clearest case: 0xFF
+  reads as "mouse interface needed" while the live clamped value is 0, so the
+  activation looked like an interface change every time, including
+  re-activating the slot that was already loaded. Both sides are now clamped
+  before the comparison, so the device only reconnects when something really
+  changed.
+- **Macros and slots came back blank after a reconnect.** When an activation
+  did legitimately re-enumerate, the portal kept the macro table it had read
+  from the handle that just disappeared, so the panels rendered stale state
+  until the portal was reopened. The caches are dropped before reacquiring and
+  the macro table is re-read on the new handle.
+
+### Note
+- Saving the FIRST macro (or removing the last one) changes which HID
+  interfaces the device exposes, so it re-enumerates by design. Windows and
+  Sony's app briefly see the controller disappear and return with a different
+  shape; the app in particular may need to be restarted, or another profile
+  loaded, before it lists the controller again. Adding further macros after the
+  first does not re-enumerate.
+
+## [1.29.2] — 2026-08-02
+
+### Fixed
+- **"Hide input from game" now works for the Edge buttons and pad-click halves.**
+  The suppression table in `main.cpp` stopped at Mute, so a Replace macro bound
+  to an Fn button, a paddle or a qualified touchpad click fired correctly but
+  could not hide the press - the game still saw it. All bits the decoder
+  produces can now be suppressed. A suppressed pad-click half clears the click
+  bit only (never the other half, since suppression is only engaged while that
+  half is held) and leaves the touch coordinates alone.
+
+## [1.29.1] — 2026-08-02
 
 Macro input fixes on top of 1.29.0.
 
@@ -47,8 +84,6 @@ Macro input fixes on top of 1.29.0.
 
 Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
 
-## [1.29.0] — 2026-08-22
-
 ### Added
 - **DualSense Edge Fn buttons and paddles as macro inputs.** All four sit in
   report byte 9 and were never decoded; they now join the logical button mask as
@@ -59,6 +94,8 @@ Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
   - A paddle with an assignment in the Sony app still sends that assignment: the
     controller applies its own mapping before the report reaches the dongle.
   - A standard DualSense never sets these bits, so decoding them costs nothing.
+
+## [1.29.0] — 2026-08-22
 
 ## [1.28.4] — 2026-08-22
 
