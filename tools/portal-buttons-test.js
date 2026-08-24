@@ -87,29 +87,31 @@ ok(portalDecode(mkReport(8, 0, 0xF7)) === (hdrBits['PS'] | hdrBits['TOUCHPAD'] |
    'all byte 9 bits together');
 
 // --- touchpad click halves --------------------------------------------------
-// One physical switch, qualified by finger position. Both decoders must agree
-// on the boundary AND on leaving the click unqualified when no finger is down.
+// The half is NOT derived in macroButtonMask any more: the firmware takes it
+// from where the finger LANDED, so the portal must too (macroPadHalf), or a
+// recorded chord will not match at play time. What is checked here is that the
+// decoder no longer invents one, and that macroPadHalf agrees with the
+// firmware rule including the neutral centre band.
 console.log('\ntouchpad click halves');
 const mkTouch = (clicked, down, x) => {
   const buf = new Uint8Array(40);
-  buf[7] = 8;                                  // hat neutral
-  buf[9] = clicked ? 0x02 : 0;
-  buf[32] = down ? 0x00 : 0x80;                // bit7 SET = lifted
-  buf[33] = x & 0xFF;
-  buf[34] = (x >> 8) & 0x0F;
+  buf[7] = 8; buf[9] = clicked ? 0x02 : 0;
+  buf[32] = down ? 0x00 : 0x80; buf[33] = x & 0xFF; buf[34] = (x >> 8) & 0x0F;
   return new DataView(buf.buffer);
 };
-const T = hdrBits['TOUCHPAD'], L = hdrBits['PAD_CLICK_LEFT'], R = hdrBits['PAD_CLICK_RIGHT'];
-ok(portalDecode(mkTouch(true, true, 100)) === (T | L), 'click at x=100 is a LEFT click');
-ok(portalDecode(mkTouch(true, true, 1800)) === (T | R), 'click at x=1800 is a RIGHT click');
-// Boundary. C++ computes TOUCH_X_MAX/2 as 959 (integer), JS as 959.5 - the
-// comparison is > in both, so 959 is left and 960 is right either way. This
-// pins that the two languages have not drifted apart at the midpoint.
-ok(portalDecode(mkTouch(true, true, 959)) === (T | L), 'x = 959 is the last LEFT column');
-ok(portalDecode(mkTouch(true, true, 960)) === (T | R), 'x = 960 is the first RIGHT column');
-ok(portalDecode(mkTouch(true, false, 100)) === T, 'click with no finger down stays unqualified');
-ok(portalDecode(mkTouch(false, true, 100)) === 0, 'touching without clicking is not a button');
-ok((portalDecode(mkTouch(true, true, 100)) & T) !== 0, 'a qualified click still sets TOUCHPAD, so old chords keep matching');
+const T = hdrBits['TOUCHPAD'];
+ok(portalDecode(mkTouch(true, true, 100)) === T, 'decoder reports a plain click, no half');
+ok(portalDecode(mkTouch(true, true, 1800)) === T, 'decoder reports a plain click on the right too');
+const halfSrc = html.match(/function macroPadHalf\(x0\)\{[\s\S]*?\n\}/);
+if (!halfSrc) { console.error('macroPadHalf not found'); process.exit(1); }
+const padHalf = new Function(xmaxSrc[0] + '\n' + halfSrc[0] + '\nreturn macroPadHalf;')();
+const L2 = hdrBits['PAD_CLICK_LEFT'], R2 = hdrBits['PAD_CLICK_RIGHT'];
+ok(padHalf(100)  === L2, 'landing at x=100 is LEFT');
+ok(padHalf(1800) === R2, 'landing at x=1800 is RIGHT');
+ok(padHalf(799)  === L2, 'x=799 is the last LEFT column');
+ok(padHalf(800)  === 0,  'x=800 enters the neutral band');
+ok(padHalf(960)  === 0,  'dead centre is neutral');
+ok(padHalf(1120) === R2, 'x=1120 is RIGHT again');
 
 // --- reachability: nothing the header decodes may be undecodable here ------
 console.log('\nreachability');
