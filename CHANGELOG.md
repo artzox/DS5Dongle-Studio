@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project are documented here.
+Supersedes the 1.31.x and 1.32.x development builds, which were not released.
 
 ## [1.32.7] — 2026-08-02
 
