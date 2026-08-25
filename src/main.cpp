@@ -395,8 +395,122 @@ static inline int32_t gyro_rate_mul(uint8_t polling_rate_mode) {
 // stack from the BT callback: the first version did exactly that and the portal
 // started failing to read config fields, including the version registers, so it
 // reported "pre-1.0.5". Only arithmetic belongs here.
+// --- Natural (real-world) sensitivity ---------------------------------------
+// counts = degrees_rotated * (counts_per_360 / 360) * multiplier
+//
+// The gyro reports ANGULAR VELOCITY in raw LSB. The DualSense runs its gyro at
+// +/-2000 degrees/s over a full int16, so one LSB is 2000/32768 deg/s, and one
+// report covers 1 ms of that at 1 kHz - which is exactly what gyro_rate_mul()
+// already normalises for lower polling rates. Putting those together:
+//
+//   counts = raw * rate_mul * (2000/32768) / 1000 * (counts_360/360) * (x10/10)
+//          = raw * rate_mul * counts_360 * x10 / 58982400
+//
+// The divisor is exact (32768 * 3600000 / 2000), so this is integer maths with
+// no drift, and the remainder is carried the same way the arbitrary path does -
+// without that, slow movement is truncated to nothing and fast movement loses
+// a fraction of a count per report, always in the same direction.
+//
+// int64 is deliberate: counts_360 reaches 50000 and raw reaches 32767, so the
+// numerator overflows int32 easily. It runs once per report, not per sample.
+// Nominal scale: +/-2000 deg/s over a full int16, x100 for the trim.
+//   counts = raw * rate_mul * counts_360 * x10 * trim / (58982400 * 100)
+// The trim is what absorbs any error in that rating, per controller. Do not
+// bake a correction in here on the strength of hand-turned measurements: an
+// error factor that is not a clean ratio is as likely to be the human judging
+// the angle as the sensor reporting it.
+// counts = raw * dt_us * (2000/32768) deg/s / 1e6 * (counts_360/360) * (x10/10) * (trim/100)
+//        = raw * dt_us * counts_360 * x10 * trim / (32768 * 1e6 * 360 * 10 * 100 / 2000)
+constexpr int64_t GYRO_NATURAL_DIV = 32768LL * 1000000LL * 360LL * 10LL * 100LL / 2000LL;
+static int64_t g_nat_acc_x = 0, g_nat_acc_y = 0;
+
+// Degrees rotated since the last diagnostics read, x10, so the constant above
+// can be CHECKED rather than trusted: rotate the controller through a known
+// angle and compare. Wrong by a fixed ratio would mean 1.0x is not truly 1:1.
+// Accumulate RAW readings and convert only when read. Converting per report
+// truncated each one toward zero, so a slow turn lost most of its travel and a
+// fast one lost a fraction every millisecond - the measurement has to be more
+// trustworthy than the thing it is checking.
+static volatile int64_t g_nat_raw_sum = 0;
+static volatile uint32_t g_nat_samples = 0;   // gyro reports since the last read
+static volatile uint64_t g_nat_span_us = 0;   // time they covered
+// Samples per second observed over the last measurement window - exposes the
+// report rate instead of assuming it.
+uint16_t gyro_natural_rate_hz_read(void) {
+    const uint64_t span = g_nat_span_us;
+    const uint32_t n    = g_nat_samples;
+    g_nat_samples = 0; g_nat_span_us = 0;
+    if (span == 0) return 0;
+    const uint64_t hz = (uint64_t) n * 1000000ULL / span;
+    return (uint16_t) (hz > 65535 ? 65535 : hz);
+}
+
+uint32_t gyro_natural_degrees_x10_read(void) {
+    const int64_t s = g_nat_raw_sum;
+    g_nat_raw_sum = 0;
+    // degrees x10 = raw_sum * (2000/32768) deg/s / 1000 reports/s * 10
+    // degrees x10 = sum(raw * dt_us) * (2000/32768) / 1e6 * 10
+    const int64_t d = s * 20000LL / 32768LL / 1000000LL;
+    return (uint32_t) (d < 0 ? 0 : (d > 0xFFFFFFFFLL ? 0xFFFFFFFFLL : d));
+}
+
 static inline void __not_in_flash_func(gyro_emit_mouse)(int32_t horiz, int32_t pitch,
                                                         const Config_body &cfg) {
+    // Feed the angle check in EVERY mode: you need to calibrate before switching
+    // to natural, not after.
+    // Diagnostic integrates over real time too, and also counts how many gyro
+    // samples arrive per second - if that is not what anyone expects, it is the
+    // answer to why an angle looked wrong.
+    {
+        static uint64_t d_last_us = 0;
+        const uint64_t now_us = time_us_64();
+        const uint64_t dt_us  = (d_last_us == 0) ? 0 : (now_us - d_last_us);
+        d_last_us = now_us;
+        if (dt_us > 0 && dt_us <= 100000) {
+            g_nat_raw_sum += (int64_t) (horiz < 0 ? -horiz : horiz) * (int64_t) dt_us;
+            g_nat_samples++;
+            g_nat_span_us += dt_us;
+        }
+    }
+    if (cfg.gyro_sens_mode == 1 && cfg.flick_counts_360 > 0) {
+        // INTEGRATE OVER REAL TIME. The gyro reports angular velocity, so
+        // turning it into an angle needs the interval each reading covers. That
+        // interval was assumed to be 1 ms scaled by the USB polling rate - but
+        // these samples arrive over BLUETOOTH, whose rate is set by the
+        // controller and its link, not by how often the host polls USB. The
+        // assumption made a measured 90-degree turn read 1.4x high and a
+        // 360-degree turn 2.3x LOW, which no scale error can do: a fast turn
+        // packs its rotation into fewer reports, a slow one into more, so the
+        // error moved with how fast the turn was. Using the actual elapsed
+        // microseconds removes the guess entirely.
+        static uint64_t s_last_us = 0;
+        const uint64_t now_us = time_us_64();
+        const uint64_t dt_us  = (s_last_us == 0) ? 0 : (now_us - s_last_us);
+        s_last_us = now_us;
+        // A gap this large means the stream stopped (disconnect, sleep); one
+        // sample cannot represent it, so drop it rather than lurch the view.
+        if (dt_us == 0 || dt_us > 100000) { return; }
+        const int64_t c360 = cfg.flick_counts_360;
+        // Scale trim, x100 (100 = the nominal +/-2000 deg/s rating). Measuring a
+        // known rotation is the only way to confirm that rating on real
+        // hardware; if it is off, this corrects it once and every multiplier
+        // stays honest afterwards.
+        const int64_t trim = cfg.gyro_scale_trim_x100 ? cfg.gyro_scale_trim_x100 : 100;
+        const int64_t mx   = (cfg.gyro_natural_x10 ? cfg.gyro_natural_x10 : 10) * trim;
+        const int64_t my   = (cfg.gyro_natural_y_x10 ? cfg.gyro_natural_y_x10 : (cfg.gyro_natural_x10 ? cfg.gyro_natural_x10 : 10)) * trim;
+        const int64_t nx = (int64_t) -horiz * (int64_t) dt_us * c360 * mx + g_nat_acc_x;
+        const int64_t ny = (int64_t) -pitch * (int64_t) dt_us * c360 * my + g_nat_acc_y;
+        int32_t dx = (int32_t) (nx / GYRO_NATURAL_DIV);
+        int32_t dy = (int32_t) (ny / GYRO_NATURAL_DIV);
+        g_nat_acc_x = nx - (int64_t) dx * GYRO_NATURAL_DIV;
+        g_nat_acc_y = ny - (int64_t) dy * GYRO_NATURAL_DIV;
+
+        if (cfg.gyro_invert & 1) dx = -dx;
+        if (cfg.gyro_invert & 2) dy = -dy;
+        g_gm_pend_x += dx;
+        g_gm_pend_y += dy;
+        return;
+    }
     const int32_t s   = cfg.gyro_sens;
     const int32_t sy  = cfg.gyro_sens_y ? cfg.gyro_sens_y : s;
     const int32_t mul = gyro_rate_mul(cfg.polling_rate_mode);
@@ -513,6 +627,30 @@ static float flick_stick_step(float sx, float sy, float dt) {
     return result;
 }
 
+// --- Counts-per-360 calibration burst ---------------------------------------
+// Emits an EXACT number of mouse counts on request. Point: counts-per-360 is a
+// property of the GAME's mouse sensitivity, so it cannot be derived from the
+// controller - but it CAN be measured. Send a known number of counts, see how
+// far the game turned, and the true value follows:
+//   counts_360 = counts_sent * 360 / degrees_observed
+// That replaces the guess-and-correct loop behind the default of 6500, and
+// calibrates Flick Stick at the same time since both read the same field.
+//
+// Metered out over many reports rather than in one: a single huge delta gets
+// clamped by some games, and a smooth sweep is far easier to judge by eye than
+// an instant snap.
+static volatile int32_t g_cal_remaining = 0;
+// Counts per report. This was 40, which delivers ~10,000 counts/second - fast
+// enough that a game sampling the mouse once a frame, or applying any
+// smoothing, drops part of the sweep. Lost counts make the view turn LESS than
+// it should, which inflates the calculated counts-per-360 rather than showing
+// up as an obvious failure. 8 per report is ~2,000/second: slow enough for any
+// game to see every count, and still only a few seconds for a full sweep.
+constexpr int32_t CAL_STEP = 8;
+
+void gyro_cal_emit(int32_t counts) { g_cal_remaining = counts; }
+bool gyro_cal_busy(void)           { return g_cal_remaining != 0; }
+
 // Drained from the main loop, where touching TinyUSB is safe.
 void gyro_mouse_task() {
     const auto &cfg = get_config();
@@ -605,6 +743,16 @@ void gyro_mouse_task() {
                 g_sm_rem_x = 0.0f; g_sm_rem_y = 0.0f;   // inside the deadzone: no creep
             }
         }
+    }
+
+    // Feed the calibration burst into the same pending counters the gyro uses,
+    // so it goes out through exactly the path being calibrated.
+    if (g_cal_remaining != 0) {
+        const int32_t step = (g_cal_remaining > 0)
+                           ? (g_cal_remaining <  CAL_STEP ? g_cal_remaining :  CAL_STEP)
+                           : (g_cal_remaining > -CAL_STEP ? g_cal_remaining : -CAL_STEP);
+        g_gm_pend_x    += step;
+        g_cal_remaining -= step;
     }
 
     int32_t dx = g_gm_pend_x, dy = g_gm_pend_y;

@@ -36,8 +36,8 @@ static bool read_config_value(T &value, uint8_t const *buffer, uint16_t bufsize)
 // Firmware version, reported via read-only fields 0x7D/0x7E/0x7F so the portal
 // can display which build is flashed. Bump on every released build.
 constexpr uint8_t FW_VER_MAJOR = 1;
-constexpr uint8_t FW_VER_MINOR = 31;
-constexpr uint8_t FW_VER_PATCH = 1;
+constexpr uint8_t FW_VER_MINOR = 32;
+constexpr uint8_t FW_VER_PATCH = 7;
 
 // Width of the value the LAST successful write_config_value() emitted. The bulk
 // reader (0x0c) needs a length per field and used to carry its own hand-written
@@ -232,6 +232,14 @@ static bool set_field_in(Config_body &new_config, uint8_t field_id, uint8_t cons
         case 0x79: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.stick_mouse_curve=v; break; }
         case 0x7a: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.stick_mouse_invert=v; break; }
         case 0x66: { uint16_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.stick_mouse_sens_y=v; break; }
+        case 0x80: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_sens_mode=v; break; }
+        case 0x81: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_natural_x10=v; break; }
+        case 0x82: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_natural_y_x10=v; break; }
+        case 0x84: { uint16_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_scale_trim_x100=v; break; }
+        // Not a setting: writing this EMITS that many mouse counts to the right,
+        // for measuring the game's counts per 360. Nothing is stored.
+        case 0x86: { uint16_t v{}; if(!read_config_value(v,buffer,bufsize))return false;
+                     extern void gyro_cal_emit(int32_t); gyro_cal_emit((int32_t) v); break; }
         case 0x65: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.rstick_invert=v; break; }
         // Macro enable bitmap, stored INVERTED (set bit = disabled) so an old
         // slot's 0xFF tail fill defaults to "no macros". See config.h.
@@ -335,6 +343,24 @@ static bool get_config_field_from(const Config_body &config, uint8_t field_id, u
         case 0x79: return write_config_value(buffer, bufsize, config.stick_mouse_curve);
         case 0x7a: return write_config_value(buffer, bufsize, config.stick_mouse_invert);
         case 0x66: return write_config_value(buffer, bufsize, config.stick_mouse_sens_y);
+        // NOTE: field ids 0x01-0x7F are fully allocated. The field-id space is a
+        // plain byte and is SEPARATE from HID report ids, so new settings
+        // continue at 0x80 - the collision the compiler caught here was these
+        // three landing on existing diagnostics.
+        case 0x80: return write_config_value(buffer, bufsize, config.gyro_sens_mode);
+        case 0x81: return write_config_value(buffer, bufsize, config.gyro_natural_x10);
+        case 0x82: return write_config_value(buffer, bufsize, config.gyro_natural_y_x10);
+        case 0x84: return write_config_value(buffer, bufsize, config.gyro_scale_trim_x100);
+        // Gyro sample rate actually observed (Hz), so the report interval is a
+        // measurement rather than an assumption.
+        case 0x85: { extern uint16_t gyro_natural_rate_hz_read();
+                     return write_config_value(buffer, bufsize, gyro_natural_rate_hz_read()); }
+        // Non-zero while a calibration burst is still being sent.
+        case 0x87: { extern bool gyro_cal_busy(); return write_config_value(buffer, bufsize, (uint8_t) (gyro_cal_busy() ? 1 : 0)); }
+        // Degrees rotated (x10) since the last read, so 1:1 can be VERIFIED.
+        case 0x83: { extern uint32_t gyro_natural_degrees_x10_read();
+                     const uint32_t d = gyro_natural_degrees_x10_read();
+                     return write_config_value(buffer, bufsize, (uint16_t) (d > 65535 ? 65535 : d)); }
         // Touchpad-click diagnostics (read-only).
         case 0x7b: { uint16_t x{}; uint8_t p{}, l{}; macro_pad_debug(x, p, l); return write_config_value(buffer, bufsize, x); }
         case 0x7c: { uint16_t x{}; uint8_t p{}, l{}; macro_pad_debug(x, p, l);

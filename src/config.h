@@ -315,6 +315,27 @@ struct __attribute__((packed)) Config_body {
     // in a game is far smaller than the horizontal one, so a gain that feels
     // right for turning is usually too fast for looking up and down.
     uint16_t stick_mouse_sens_y;
+
+    // --- Gyro natural sensitivity (v1.32.0) -----------------------------------
+    // Express gyro-to-mouse aiming as a REAL-WORLD RATIO instead of an
+    // arbitrary slider: 1.0x means rotating the controller 10 degrees turns the
+    // in-game view 10 degrees. Set it once and it holds in every game that
+    // shares the same mouse counts per 360, instead of being re-tuned per game.
+    //   0 = arbitrary slider (default, gyro_sens as before)
+    //   1 = natural, using gyro_natural_x10 and flick_counts_360
+    // Only meaningful for gyro-to-MOUSE. Gyro-to-stick is a rate control - the
+    // stick says "how fast to turn", not "how far" - so a 1:1 rotation ratio
+    // has nothing to attach to there, and this is ignored in that mode.
+    uint8_t  gyro_sens_mode;
+    // Multiplier x10: 10 = 1.0x (true 1:1), 25 = 2.5x. Typical play is 2.5x-12x.
+    uint8_t  gyro_natural_x10;
+    // Vertical multiplier x10, 0 = follow the horizontal one.
+    uint8_t  gyro_natural_y_x10;
+    // Gyro scale trim, x100 (0 or 100 = nominal). The natural conversion assumes
+    // the gyro is rated +/-2000 deg/s; if a controller reads high or low, the
+    // angle check in the portal measures the error and this corrects it, so
+    // 1.0x is genuinely 1:1 rather than nominally.
+    uint16_t gyro_scale_trim_x100;
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so

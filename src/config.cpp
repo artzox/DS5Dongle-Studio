@@ -238,6 +238,13 @@ void config_valid() {
     // is never used. 0 still means "use the default"; 1..255 are real speeds.
     if (body->stick_mouse_sens > 20000) body->stick_mouse_sens = 0;   // 0xFFFF fill -> default
     if (body->stick_mouse_sens_y > 20000) body->stick_mouse_sens_y = 0; // 0 = follow X
+    // 0xFF is the fresh-flash fill, so this also picks the DEFAULT for a new
+    // install: Natural, now that it is calibrated rather than nominal. An
+    // existing profile stores its own 0 or 1 and is untouched.
+    if (body->gyro_sens_mode > 1) body->gyro_sens_mode = 1;
+    if (body->gyro_natural_x10 == 0 || body->gyro_natural_x10 == 0xFF) body->gyro_natural_x10 = 10; // 1.0x
+    if (body->gyro_natural_y_x10 == 0xFF) body->gyro_natural_y_x10 = 0;  // 0 = follow X
+    if (body->gyro_scale_trim_x100 == 0 || body->gyro_scale_trim_x100 > 1000) body->gyro_scale_trim_x100 = 100;
     if (body->stick_mouse_deadzone > 50) body->stick_mouse_deadzone = 8;
     if (body->stick_mouse_curve == 0xFF || body->stick_mouse_curve < 10 ||
         body->stick_mouse_curve > 40) body->stick_mouse_curve = 18;
