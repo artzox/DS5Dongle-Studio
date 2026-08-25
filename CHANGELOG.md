@@ -1,7 +1,130 @@
 # Changelog
 
-Supersedes the 1.29.9 and 1.30.0-1.31.0 development builds, which were not
-released.
+All notable changes to this project are documented here.
+
+## [1.32.7] — 2026-08-02
+
+### Changed
+- **The gyro angle check and counts-per-360 measurement moved to the Gyro tab**,
+  into a *Gyro calibration* card, next to the settings they calibrate. They were
+  on the Device tab with the wake diagnostics, which meant setting up gyro
+  aiming involved hopping between tabs. Wake troubleshooting stays on Device.
+
+## [1.32.6] — 2026-08-02
+
+### Fixed
+- **A second counts-per-360 measurement skipped the linearity check and reused
+  the previous run's readings.** The recorded pair was never cleared, so once
+  both amounts had been measured, every later measurement found them already
+  present: it went straight to Apply and compared the new reading against a
+  stale one. Sending the full amount now starts a fresh run, applying a result
+  ends one, the readings recorded so far are shown, and there is a clear link.
+
+## [1.32.5] — 2026-08-02
+
+### Fixed
+- **The counts-per-360 burst was sent too fast to measure with.** At 40 counts
+  per report it delivered ~10,000 counts/second, and a game that samples the
+  mouse once a frame - or applies any smoothing - drops part of that. Lost
+  counts make the view turn LESS than it should, which quietly inflates the
+  calculated value instead of failing visibly. The sweep now runs at ~2,000
+  counts/second, slow enough for any game to see every count.
+
+### Added
+- **Linearity check** in the calibration panel: a second button sends HALF the
+  counts, which must turn the view exactly half as far. If it does not, counts
+  are being lost or scaled on the way in - by frame-sampled mouse reads, in-game
+  smoothing, or Windows pointer acceleration - and no counts-per-360 measured
+  through that is correct however carefully the angle is judged. This is the
+  only way to tell that apart from a genuinely low in-game sensitivity, since
+  both simply look like the view turning less than expected.
+
+## [1.32.4] — 2026-08-02
+
+### Added
+- **Counts-per-360 measurement.** The dongle can emit an exact number of mouse
+  counts on request; you report how far the view turned and the portal works out
+  the value: counts_360 = sent x 360 / observed. That number belongs to the GAME
+  rather than the controller, so it cannot be derived from the gyro - but it can
+  be measured, which replaces the guess-and-correct loop behind the default of
+  6500. It calibrates Flick Stick at the same time, since both read the field.
+  The burst is metered out over many reports rather than sent as one delta:
+  games clamp large jumps, and a smooth sweep is far easier to judge by eye.
+
+## [1.32.3] — 2026-08-02
+
+### Fixed
+- **Natural sensitivity and the angle check integrated against an assumed
+  report rate.** The gyro reports angular VELOCITY, so converting it to an angle
+  needs the interval each reading covers. That interval was taken to be 1 ms
+  scaled by the USB polling rate — but the samples arrive over BLUETOOTH, at a
+  rate set by the controller and the link, not by how often the host polls USB.
+  Measurements exposed it: a 90-degree turn read about 1.4x HIGH while a
+  360-degree turn read about 2.3x LOW, which no scale error can produce. A fast
+  turn packs its rotation into fewer reports and a slow one into more, so the
+  error tracked the speed of the turn rather than the angle. Both paths now
+  integrate over the real elapsed microseconds between samples, which removes
+  the assumption; verified identical at 250 Hz and 1000 Hz sample rates.
+- Samples separated by more than 100 ms are dropped rather than integrated, so a
+  disconnect or a sleep cannot deliver one enormous jump.
+
+### Added
+- The angle check reports the **gyro sample rate it actually observed**, so the
+  report interval is visible rather than assumed.
+
+## [1.32.2] — 2026-08-02
+
+### Changed
+- **Natural is the default gyro scale on a fresh install**, and Arbitrary is
+  renamed **Manual** — a clearer description of what it is (tune by feel, no
+  calibration) now that the alternative is calibrated rather than nominal.
+  Existing profiles keep whatever they stored.
+- **The angle check measures a full 360 instead of 90 degrees.** Judging a
+  quarter turn by eye is the least accurate part of the measurement, and a few
+  degrees of human error is several percent of the answer. A full turn ends
+  where it started, so the controller can be lined up against a desk edge and
+  returned to it exactly, and the error is spread over four times the angle.
+
+### Added
+- **Gyro scale trim** (50-1000, default 100): corrects the sensor's assumed
+  scale so 1.0x is genuinely 1:1 rather than nominally. The angle check reports
+  the value to enter.
+
+### Fixed
+- **The angle diagnostic reported ten times the true angle** (a divisor of 100
+  where it should have been 1000), and converted each report separately so slow
+  rotation was truncated away. It now sums raw readings and converts once.
+- The check feeds in **every** gyro mode, so the sensor can be calibrated before
+  switching to Natural rather than after.
+
+## [1.32.0] — 2026-08-02
+
+### Added
+- **Gyro natural sensitivity (real-world scale).** Gyro-to-mouse aiming can now
+  be expressed as a ratio rather than an arbitrary slider: at **1.0x**, rotating
+  the controller 10 degrees turns the in-game view 10 degrees. Set it once and
+  it holds in every game sharing the same mouse counts per 360, instead of being
+  re-tuned per game — the behaviour people expect from Steam Input and similar
+  remappers. Typical play is 2.5x to 12x.
+  - Uses the **counts per 360** value Flick Stick already needed, so games
+    calibrated for one are calibrated for the other. That field is no longer
+    labelled as Flick-Stick-only.
+  - Separate vertical multiplier, 0 to follow the horizontal one.
+  - The old arbitrary slider remains the default and is untouched, so existing
+    profiles behave exactly as before.
+  - Applies to gyro-to-MOUSE only. Gyro-to-stick is a rate control — the stick
+    says how fast to turn, not how far — so a 1:1 rotation ratio has nothing to
+    attach to, and the setting is ignored there.
+  - The conversion is exact integer maths with the remainder carried, so slow
+    movement is not truncated away and fast movement does not lose a fraction of
+    a count per report. Verified against ideal values to within 0.06% across
+    10-360 degree turns and 1x-12x, and identical at 250, 500 and 1000 Hz.
+  - A **degrees-rotated diagnostic** is exposed so the 1:1 claim can be checked
+    on hardware rather than trusted: rotate through a known angle and compare.
+
+### Note
+- Config field ids 0x01-0x7F are now fully allocated; new settings continue at
+  0x80. The field-id space is a plain byte and separate from HID report ids.
 
 ## [1.31.1] — 2026-08-02
 
@@ -237,8 +360,6 @@ Macro input fixes on top of 1.29.0.
 
 Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
 
-## [1.29.0] — 2026-08-22
-
 ### Added
 - **DualSense Edge Fn buttons and paddles as macro inputs.** All four sit in
   report byte 9 and were never decoded; they now join the logical button mask as
@@ -249,6 +370,8 @@ Reflash both boards. Config version stays at 19 and no `flash_nuke` is needed.
   - A paddle with an assignment in the Sony app still sends that assignment: the
     controller applies its own mapping before the report reaches the dongle.
   - A standard DualSense never sets these bits, so decoding them costs nothing.
+
+## [1.29.0] — 2026-08-22
 
 ## [1.28.4] — 2026-08-22
 

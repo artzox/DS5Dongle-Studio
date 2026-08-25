@@ -272,7 +272,11 @@ const SECTIONS = [
     [0x32,'gyro_invert','u8','Invert gyro aim','bits',['X (horizontal)','Y (vertical)']],
     [0x75,'gyro_sens_y','u8','Vertical sensitivity (0 = same as Sensitivity)','number',[0,100]],
     [0x73,'gyro_output','u8','Gyro output','select',{0:'Right stick (works everywhere)',1:'Mouse (finer aim; needs the pad hidden in most games)',2:'Mouse + Flick Stick (right stick flicks to a bearing)'}],
-    [0x74,'flick_counts_360','u16','Flick Stick — mouse counts per 360°','number',[500,50000]],
+    [0x74,'flick_counts_360','u16','Mouse counts per 360° (Flick Stick and Natural sensitivity)','number',[500,50000]],
+    [0x80,'gyro_sens_mode','u8','Gyro sensitivity scale','select',{0:'Manual — tune by feel, no calibration needed',1:'Natural — real-world ratio (default; needs counts per 360°)'}],
+    [0x81,'gyro_natural_x10','u8','Natural multiplier ×10 (10 = 1:1, 25 = 2.5×)','number',[5,200]],
+    [0x82,'gyro_natural_y_x10','u8','Natural vertical ×10 (0 = same as above)','number',[0,200]],
+    [0x84,'gyro_scale_trim_x100','u16','Gyro scale trim (100 = nominal; see the angle check)','number',[50,1000]],
   ]},
   { title: 'Right Stick', fields: [
     [0x65,'rstick_invert','u8','Invert right stick','bits',['X (horizontal)','Y (vertical)']],
@@ -397,6 +401,9 @@ const DESCRIPTIONS = {
   gyro_mode: "When gyro aiming is active - off, always, or only while a chosen button is held.",
   gyro_sens: "How much aim movement the gyro produces.",
   gyro_axis: "Whether turning or tilting the controller drives horizontal aim.",
+  gyro_sens_mode: "Manual is the original slider: a number with no real-world meaning, retuned per game. Natural makes it a RATIO - at 1.0x, rotating the controller 10 degrees turns the view 10 degrees - so one setting is correct in every game that shares the same counts per 360. Natural needs the counts per 360 value below to be right, and applies to gyro-to-MOUSE only: gyro-to-stick tells the game how FAST to turn, not how far, so a rotation ratio has nothing to attach to there.",
+  gyro_natural_x10: "The ratio, x10. 10 means 1:1 - the view turns exactly as far as you rotate the pad. Most people play between 25 (2.5x) and 120 (12x), higher the less they rely on the stick. To check it is truly 1:1 on your hardware, use the degrees readout in the Device tab: rotate through a known angle and compare.",
+  gyro_natural_y_x10: "Vertical ratio, x10. 0 follows the horizontal one. A game's vertical aiming range is much smaller than its horizontal one, so a lower value here is common.",
   flick_counts_360: "How far a flick turns you, in this game. It is the same number a real mouse needs to spin a full 360 degrees: (cm per 360) x (DPI / 2.54). If you know your cm/360 and DPI, just calculate it - no trial needed. Otherwise leave 6500 and correct once: flick fully back (a 180), see how far you actually turned, then multiply this value by 180 / the degrees you got. Two tries is usually enough. Turn mouse acceleration OFF and raw input ON, or no single value can be correct. Changing the game's own sensitivity means recalibrating.",
   gyro_sens_y: "Vertical gyro sensitivity on its own. Leave at 0 and both axes use the Sensitivity setting above, exactly as before. A lower value here is the usual choice: the vertical aiming range in a game is far smaller than the horizontal one, so the gain that feels right for turning is often too fast for looking up and down.",
   gyro_output: "Right stick works in any game with no setup. Mouse sends pointer movement instead, which is what a gyro naturally produces - finer at low speed and it never pegs on a fast turn - but many games ignore mouse input while a gamepad is present, so it usually needs the pad hidden. Changing this re-enumerates the controller.",
@@ -1472,6 +1479,131 @@ function ceActiveWindows(list){
 // Read the firmware's wake diagnostics (cmd 0x16). The wake failure is
 // intermittent, so this reports what the device actually observed across the
 // sleeps since it was last powered up, rather than leaving us to guess.
+// --- Gyro angle check -------------------------------------------------------
+// Natural sensitivity converts wrist rotation to mouse counts using the gyro's
+// full-scale rating. If that rating were wrong, "1.0x" would be off by a fixed
+// ratio and there would be no way to tell from inside a game. So: measure a
+// known rotation and compare. Reading field 0x83 also RESETS the counter, which
+// is what makes Start work.
+// --- Counts-per-360 measurement --------------------------------------------
+// The dongle emits an exact number of mouse counts; you report how far the view
+// turned. counts_360 = sent * 360 / observed. This is the one number in the
+// chain that belongs to the GAME rather than the controller, so it cannot be
+// derived - but it can be measured, which beats the guess-and-correct loop.
+let CAL_COUNTS = 6500;
+// LINEARITY CHECK. If the game receives every count, half the counts must turn
+// the view exactly half as far. If it does not, counts are being lost or
+// scaled on the way in - by a frame-sampled mouse read, by in-game smoothing,
+// or by Windows pointer acceleration - and any counts-per-360 measured through
+// that is wrong no matter how carefully the angle is judged. Measuring twice at
+// different amounts is the only way to tell that from a genuinely low
+// sensitivity, since both simply look like "the view turned less".
+async function calSendAmount(n){
+  const box = document.getElementById('calbox');
+  try {
+    if (+config.gyro_output < 1){
+      box.innerHTML = '<span style="color:#e0a030">Set Gyro output to Mouse first \u2014 otherwise there is no mouse for the counts to move.</span>';
+      return;
+    }
+    CAL_COUNTS = n;
+    // Sending the FULL amount starts a new measurement run, so the previous
+    // run's readings are discarded. Without this they persisted: a second
+    // attempt found both amounts already recorded, skipped asking for the
+    // check, and compared the new reading against a stale one from before.
+    if (n === 6500) window._calLast = {};
+    box.innerHTML = `Switch to the game NOW \u2014 sending ${n} counts in 3s\u2026`;
+    await sleep(3000);
+    await hidLocked(() => writeField(0x86, 'u16', n));
+    box.innerHTML = `Sent <b>${n}</b> counts to the right (the sweep takes a few seconds). Type how far the view turned, then press 3.`;
+  } catch(e){ box.innerHTML = 'Could not send: ' + e.message; }
+}
+async function calSend(){ return calSendAmount(6500); }
+async function calSendHalf(){ return calSendAmount(3250); }
+function calCompute(){
+  const box = document.getElementById('calbox');
+  const obs = parseFloat(document.getElementById('calobs').value);
+  if (!isFinite(obs) || obs <= 0){ box.innerHTML = 'Enter the degrees the view actually turned.'; return; }
+  const c360 = Math.round(CAL_COUNTS * 360 / obs);
+  window._calLast = window._calLast || {};
+  window._calLast[CAL_COUNTS] = obs;
+  const recorded = Object.keys(window._calLast).sort((x, y) => y - x)
+    .map(k => `${k} \u2192 ${window._calLast[k]}\u00b0`).join(', ');
+  if (c360 < 500 || c360 > 50000){
+    box.innerHTML = `<span style="color:#e0a030">That works out to ${c360}, outside the sensible range. Check the game had focus and that mouse acceleration is off, then try again.</span>`;
+    return;
+  }
+  // If both amounts have been measured, check they agree.
+  let lin = '';
+  const a = window._calLast[6500], b = window._calLast[3250];
+  if (a && b){
+    const ratio = a / b;                       // should be 2.0
+    lin = (ratio > 1.8 && ratio < 2.2)
+      ? `<br><span style="color:#4ade80">Linearity OK: half the counts turned half as far (${ratio.toFixed(2)}x), so the game is receiving every count and this number is trustworthy.</span>`
+      : `<br><span style="color:#e0a030">Half the counts turned ${ratio.toFixed(2)}x less, not 2x. Counts are being lost or scaled on the way in \u2014 turn OFF in-game mouse smoothing/acceleration and Windows "Enhance pointer precision", then measure again. Until this reads about 2x, any counts-per-360 from here will be too high.</span>`;
+  } else {
+    lin = `<br><span style="color:var(--sub)">Now press <b>Send 3250</b> and measure again: half the counts should turn half as far. If they do not, counts are being lost and this number is too high \u2014 that check matters more than judging the angle precisely.</span>`;
+  }
+  box.innerHTML = `<span style="color:var(--sub)">Recorded this run: ${recorded} ` +
+    `<a href="#" onclick="calReset();return false;">clear</a></span><br>` +
+    `This game needs <b>${c360}</b> counts per 360\u00b0.` +
+    ` <button class="btn" style="padding:2px 10px;font-size:12px" onclick="calApply(${c360})">Apply it</button>` +
+    lin;
+}
+function calReset(){
+  window._calLast = {};
+  const box = document.getElementById('calbox');
+  if (box) box.innerHTML = 'Cleared. Press <b>Send 6500</b> to start a fresh measurement.';
+}
+async function calApply(v){
+  const box = document.getElementById('calbox');
+  try {
+    config.flick_counts_360 = v;
+    (window._dirty = window._dirty || {})['flick_counts_360'] = 1;
+    await hidLocked(() => writeField(0x74, 'u16', v));
+    window._calLast = {};   // applied: the run is finished
+    box.innerHTML = `Set to <b>${v}</b>. Save to keep it, or it reverts on the next profile load.`;
+    render();
+  } catch(e){ box.innerHTML = 'Could not apply: ' + e.message; }
+}
+
+async function gyroAngleStart(){
+  const box = document.getElementById('gyroangle');
+  // A FULL TURN, not a quarter. Judging 90 degrees by eye is the least accurate
+  // part of this measurement - a few degrees of human error is several percent
+  // of the answer. A 360 ends where it started, so you can line the controller
+  // up with the same edge of a desk or door frame and know you are within a
+  // degree or two, and the error is spread over four times the angle.
+  try {
+    await hidLocked(() => readField(0x83, 'u16'));   // read = reset
+  } catch(e){ if (box) box.innerHTML = 'Could not start: ' + e.message; return; }
+  for (let s = 8; s > 0; s--){
+    if (box) box.innerHTML = `<b>Turn now</b> \u2014 one full turn (360\u00b0) to the right, ending pointing exactly where you started. Keep the pad level, then hold still. <b>${s}s</b>`;
+    await sleep(1000);
+  }
+  if (box) box.innerHTML = 'Reading\u2026';
+  try {
+    const raw = await hidLocked(() => readField(0x83, 'u16'));
+    let hz = 0;
+    try { hz = await hidLocked(() => readField(0x85, 'u16')); } catch(e) {}
+    const deg = raw / 10;
+    if (deg < 60){
+      box.innerHTML = `Measured ${deg.toFixed(1)}\u00b0 \u2014 too little to judge. Press Measure and make a complete turn during the countdown.`;
+      return;
+    }
+    const err  = (deg - 360) / 360 * 100;
+    const trim = Math.round(360 / deg * 100);
+    let verdict;
+    if (Math.abs(err) <= 5){
+      verdict = `<span style="color:#4ade80">Within 5% of a full turn \u2014 the scale is right. Leave the trim at 100.</span>`;
+    } else {
+      verdict = `<span style="color:#e0a030">The gyro reads ${deg > 360 ? 'high' : 'low'} by ${Math.abs(err).toFixed(0)}%. Set <b>Gyro scale trim</b> to <b>${trim}</b> in the Gyro tab, then 1.0\u00d7 is true 1:1 and every multiplier is honest.</span>`;
+    }
+    box.innerHTML = `Measured <b>${deg.toFixed(1)}\u00b0</b> for one full turn.<br>${verdict}` +
+      `<br><span style="color:var(--sub)">Gyro samples arrived at ${hz || '?'} Hz during the turn. ` +
+      `Line the controller up with a desk edge or door frame and return to it exactly. Repeat two or three times and average \u2014 readings within a few percent of each other mean the measurement is sound. The total counts rotation in BOTH directions, so turn one way only and hold still until the countdown ends.</span>`;
+  } catch(e){ box.innerHTML = 'Could not read: ' + e.message; }
+}
+
 async function readWakeDiag(){
   const box = document.getElementById('wakediag');
   if (box) box.innerHTML = 'Reading…';
@@ -4844,7 +4976,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.31.1</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.32.7</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
@@ -4961,7 +5093,25 @@ function render(){
       <span style="font-size:12px;color:var(--sub)">Wake troubleshooting — what the dongle observed across sleeps since it was powered up:</span><br>
       <button class="btn btn-outline" style="padding:2px 10px;margin-top:4px" onclick="readWakeDiag()">Read wake diagnostics</button>
       <div id="wakediag" style="font-size:12px;margin-top:6px">Nothing read yet.</div>
-    </div></div>` : '') + `
+    </div>
+    </div>` : '') + `
+  ` + (!q && tab==='gyro' ? `<div class="card"><div class="card-title">Gyro calibration</div>
+    <div style="font-size:12px;color:var(--sub)">Both checks measure rather than guess: the first confirms the sensor scale, the second finds the number this game needs. Do them in that order.</div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line,#333)">
+      <span style="font-size:12px;color:var(--sub)">Gyro angle check \u2014 confirms that Natural sensitivity really is 1:1 on your hardware:</span><br>
+      <button class="btn btn-outline" style="padding:2px 10px;margin-top:4px" onclick="gyroAngleStart()">Measure (8s)</button>
+      <div id="gyroangle" style="font-size:12px;margin-top:6px">Press Measure, then make one full turn (360\u00b0) to the right during the countdown, ending where you started, and hold still.</div>
+    </div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line,#333)">
+      <span style="font-size:12px;color:var(--sub)">Counts per 360\u00b0 \u2014 measure it instead of guessing. Needs gyro output set to Mouse, the game in the foreground, and in-game mouse acceleration and smoothing OFF:</span><br>
+      <button class="btn btn-outline" style="padding:2px 10px;margin-top:4px" onclick="calSend()">1. Send 6500</button>
+      <button class="btn btn-outline" style="padding:2px 10px;margin-top:4px" onclick="calSendHalf()">Send 3250 (check)</button>
+      <span style="font-size:12px">2. how far did the view turn?
+        <input id="calobs" type="number" min="1" max="3600" step="1" value="180" style="width:70px"> \u00b0
+      </span>
+      <button class="btn btn-outline" style="padding:2px 10px" onclick="calCompute()">3. Work it out</button>
+      <div id="calbox" style="font-size:12px;margin-top:6px">Switch to the game first \u2014 the counts go wherever the mouse pointer would.</div>
+    </div>` : '') + `
   `;
   app.innerHTML=html;
   if (_qFocused){

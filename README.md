@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.31.1**
+**Version 1.32.7**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.31.1-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.32.7-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -70,7 +70,6 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Gyro as a mouse (new in 1.24.0)](#gyro-as-a-mouse-new-in-1240)
   - [Flick Stick (new in 1.24.0)](#flick-stick-new-in-1240)
   - [Right Stick Inversion](#right-stick-inversion)
-  - [Stick to Mouse (new in 1.30.0)](#stick-to-mouse-new-in-1300)
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
   - [Advanced — BT Latency (experimental)](#advanced--bt-latency-experimental)
@@ -277,7 +276,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.31.1.uf2` (Pico 2 W) or `ds5-v1.31.1-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.32.7.uf2` (Pico 2 W) or `ds5-v1.32.7-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1210,6 +1209,62 @@ Because it rewrites the stick values in the report itself it works everywhere, a
 it composes with gyro aiming — the stick is inverted first, then the gyro delta is
 added on top with its own invert. *(New in 1.18.21.)*
 
+### Gyro sensitivity: Natural or Manual *(new in 1.32.0)*
+
+Two ways to set gyro aiming. **Natural** (the default on a fresh install)
+expresses it as a real-world ratio: at 1.0x, rotating the controller 10 degrees
+turns the view 10 degrees, and the same setting is correct in every game that
+shares the same mouse counts per 360. **Manual** is the original slider — a
+number with no real-world meaning that you tune by feel, per game.
+
+Natural applies to gyro-to-**mouse** only. Gyro-to-stick tells the game how fast
+to turn rather than how far, so a rotation ratio has nothing to attach to there,
+and the setting is ignored.
+
+#### Setting up Natural — step by step
+
+1. **Set gyro output to Mouse** in the Gyro tab.
+2. **Calibrate the sensor once.** Gyro tab → *Gyro calibration* → *Gyro angle check* → **Measure**,
+   then make one full 360-degree turn during the countdown, ending exactly where
+   you started. Line the controller up with a desk edge or door frame so you can
+   return to it precisely. Repeat two or three times.
+   - Reads within 5% of 360? Leave **Gyro scale trim** at 100.
+   - Reads high or low? The panel gives you the trim value to enter — set it,
+     then measure again to confirm it now reads ~360.
+3. **Measure the game's mouse counts per 360.** This belongs to the *game*, not
+   the controller — it is the same number Flick Stick needs. Gyro tab →
+   *Gyro calibration* → *Counts per 360* → press **Send 6500 counts** (you get a few seconds to
+   switch to the game), read how far the view turned, type that in and press
+   **Work it out**. Sight a landmark before sending and judge against it. Turn
+   off in-game mouse acceleration and smoothing first, or no single value can
+   be correct. You can also calculate it as `(cm per 360) x (DPI / 2.54)` if
+   you know your mouse settings.
+4. **Pick a multiplier.** 10 (=1.0x) is literal 1:1 — the camera tracks your
+   hands exactly, which is precise but only turns as far as your wrists do. Most
+   people run 25-120 (2.5x-12x): lower if the stick does the big turns and the
+   gyro only fine-aims, higher for gyro-led play.
+5. **Set a vertical multiplier** if wanted. A game's vertical aiming range is
+   much smaller than its horizontal one, so a lower value than the horizontal is
+   common; 0 follows the horizontal one.
+
+Change games and only step 3 changes. Steps 2 and 4 stay.
+
+#### Setting up Manual
+
+Set the scale to Manual and adjust **Gyro Sensitivity** until it feels right.
+Nothing to calibrate, nothing to look up — but the number means nothing outside
+that game, so expect to redo it for the next one. Manual is also the right
+choice when a game's mouse handling makes counts-per-360 meaningless (forced
+acceleration or smoothing that cannot be disabled).
+
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| Gyro sensitivity scale | Manual / Natural | Natural | Natural needs counts per 360; Manual is the original slider |
+| Natural multiplier x10 | 5-200 | 10 (= 1.0x) | 10 is true 1:1; most play at 25-120 |
+| Natural vertical x10 | 0-200 | 0 (= same) | Separate vertical ratio |
+| Gyro scale trim | 50-1000 | 100 | Corrects the sensor's scale; set from the angle check |
+| Mouse counts per 360 | 500-50000 | 6500 | Shared with Flick Stick — calibrate once, both use it |
+
 ### Stick to Mouse *(new in 1.30.0)*
 Drives the mouse from a stick, for games that aim better with a mouse than with a
 stick — or alongside gyro aiming, with the stick doing the large turns and the
@@ -1728,9 +1783,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.31.1.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.31.1)
-- `ds5-v1.31.1-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.32.7.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.32.7)
+- `ds5-v1.32.7-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —
