@@ -13,6 +13,18 @@ static bool g_sup_l = false, g_sup_r = false;
 static uint32_t macro_suppress_mask() { return g_sup; }
 static uint32_t macro_inject_mask()   { return g_inj; }
 static bool macro_suppress_stick(bool right) { return right ? g_sup_r : g_sup_l; }
+// The rewrite gate (v1.32.8) asks the macro engine whether it has anything to
+// write this tick. Mirrors macro_report_active() in macro.cpp against these
+// stubs; without it this whole harness stopped compiling, which is how it sat
+// silently unrun from 1.32.8 onward.
+static bool macro_report_active() {
+    return g_sup != 0 || g_inj != 0 || g_sup_l || g_sup_r;
+}
+// Mouse outputs are a VALUE RANGE above the controller buttons (macro.h). The
+// rewrite loop skips them so an out_btn of 11-15 never aliases a gamepad button.
+static inline bool macro_is_mouse_out(uint8_t out_btn) {
+    return out_btn >= 11 && out_btn <= 15;
+}
 // Analog travel for an L2/R2 controller output. 255 mirrors the firmware default
 // for a button-driven trigger; the trigger-to-trigger case is covered in
 // tools/macro-tests, which has the macro engine itself.
