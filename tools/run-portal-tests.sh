@@ -1,5 +1,5 @@
 #!/bin/sh
-# Extract the portal's script and run the three regression harnesses.
+# Extract the portal's script and run every regression harness in tools/.
 # Run this after ANY edit to ds5-config-portal.html.
 set -e
 cd "$(dirname "$0")/.."
@@ -21,5 +21,6 @@ node tools/portal-force-test.js
 node tools/portal-macro-test.js
 node tools/portal-search-test.js
 node tools/portal-motion-test.js
+node tools/portal-buttons-test.js
 node tools/portal-viz-test.js
 [ -f /mnt/user-data/uploads/R2_3x.json ] && node tools/portal-fileload-test.js || true
