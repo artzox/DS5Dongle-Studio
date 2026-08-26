@@ -274,13 +274,28 @@ static inline bool trigger_output_active(const Config_body &c) {
            (c.t2_l2_mode & T2_AXIS_MASK) != T2_AXIS_OFF;
 }
 
+// Does the report need rewriting at all? This decides whether the input report
+// is passed through untouched or copied and edited first.
+//
+// It used to ask only about TRIGGER settings, but apply_trigger_output() also
+// runs macro_apply_buttons(), which is what "hide input from game" and macro
+// button injection depend on. At any polling rate other than real-time, a
+// controller with no trigger features configured therefore took the untouched
+// path and every macro suppression and injection was silently dropped - so a
+// Replace macro on L3 or R3 fired its keys AND still sent the stick click, and
+// the same for every other button. Real-time mode was unaffected, which is why
+// this looked like it worked for some people and not others.
+static inline bool report_needs_rewrite(const Config_body &c) {
+    return trigger_output_active(c) || macro_report_active();
+}
+
 void __not_in_flash_func(interrupt_loop)() {
     if (!tud_hid_ready()) return;
 
     // TODO: Refactor for better code reuse
     if (get_config().polling_rate_mode != 2) {
         const auto &cdz = get_config();
-        if (trigger_output_active(cdz)) {
+        if (report_needs_rewrite(cdz)) {
             static uint8_t dz_report[63];
             memcpy(dz_report, interrupt_in_data, 63);
             apply_trigger_output(dz_report);

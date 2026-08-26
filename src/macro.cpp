@@ -109,6 +109,11 @@ static uint8_t  g_hold_sent_n  = 0;
 static bool     g_hold_pending = false;
 static uint32_t g_suppress     = 0;   // logical buttons hidden from the host
 static uint32_t g_inject       = 0;   // logical buttons asserted for the host
+// Analog passthrough for a trigger remapped onto the other trigger. Declared
+// here with the rest of the per-tick output state so macro_report_active() can
+// see it.
+static uint8_t  g_mouse_btns   = 0;   // mouse buttons held by macros this tick
+static uint8_t  g_analog_l2 = 0, g_analog_r2 = 0;
 static bool     g_sup_lstick   = false;
 static bool     g_sup_rstick   = false;
 // Per-row stick direction latches, so a stick resting on a threshold cannot
@@ -116,8 +121,26 @@ static bool     g_sup_rstick   = false;
 static uint8_t  g_stick_latch[MACRO_COUNT];
 
 uint32_t macro_suppress_mask() { return g_suppress; }
-uint32_t macro_inject_mask()   { return g_inject; }
 bool     macro_suppress_stick(bool right) { return right ? g_sup_rstick : g_sup_lstick; }
+// Keyboard and mouse output state, for the diagnostics. The inject mask only
+// covers CONTROLLER buttons - a macro that types a key sends it on the keyboard
+// interface and never appears there - so a keyboard remap read as "injecting
+// nothing" while working perfectly.
+void macro_output_state(uint8_t &keys_held, uint8_t &first_key, uint8_t &mouse_btns) {
+    keys_held  = g_hold_n;
+    first_key  = g_hold_n ? g_hold_keys[0] : 0;
+    mouse_btns = g_mouse_btns;
+}
+
+// True when the macro engine has anything to write into the report: a
+// suppression, an injection, an analog trigger passthrough or a centred stick.
+bool macro_report_active() {
+    return g_suppress != 0 || g_inject != 0 ||
+           g_analog_l2 != 0 || g_analog_r2 != 0 ||
+           g_sup_lstick || g_sup_rstick;
+}
+uint32_t macro_inject_mask()   { return g_inject; }
+
 
 static void hold_add_key(uint8_t usage) {
     if (usage == 0 || g_hold_n >= sizeof(g_hold_keys)) return;
@@ -485,13 +508,11 @@ static bool stick_dir_active(int16_t v, bool positive, uint8_t thresh, bool latc
 // Analog travel to apply to an L2/R2 controller output, 0 when that output is
 // not active. Set only when a TRIGGER drives a trigger; a button driving one
 // leaves 255, a full press.
-static uint8_t g_analog_l2 = 0, g_analog_r2 = 0;
 uint8_t macro_analog_out(bool right) { return right ? g_analog_r2 : g_analog_l2; }
 
 // Mouse output. Clicks are a STATE - held while the input is held, so a
 // click-and-drag works. Scroll is an EVENT: one tick per press, latched per row
 // so holding the button does not spin the wheel at report rate.
-static uint8_t  g_mouse_btns   = 0;
 static int8_t   g_mouse_scroll = 0;
 static uint32_t g_scroll_latch = 0;
 uint8_t macro_mouse_buttons() { return g_mouse_btns; }

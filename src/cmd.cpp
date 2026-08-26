@@ -37,7 +37,7 @@ static bool read_config_value(T &value, uint8_t const *buffer, uint16_t bufsize)
 // can display which build is flashed. Bump on every released build.
 constexpr uint8_t FW_VER_MAJOR = 1;
 constexpr uint8_t FW_VER_MINOR = 32;
-constexpr uint8_t FW_VER_PATCH = 7;
+constexpr uint8_t FW_VER_PATCH = 11;
 
 // Width of the value the LAST successful write_config_value() emitted. The bulk
 // reader (0x0c) needs a length per field and used to carry its own hand-written
@@ -357,6 +357,31 @@ static bool get_config_field_from(const Config_body &config, uint8_t field_id, u
                      return write_config_value(buffer, bufsize, gyro_natural_rate_hz_read()); }
         // Non-zero while a calibration burst is still being sent.
         case 0x87: { extern bool gyro_cal_busy(); return write_config_value(buffer, bufsize, (uint8_t) (gyro_cal_busy() ? 1 : 0)); }
+        // Live macro output state, for working out WHY a hidden button is still
+        // reaching the game: 0x88/0x89 are the low/high halves of the suppress
+        // mask (logical BTN_* bits), 0x8a/0x8b the same for the inject mask.
+        // Reading these while holding the button says whether the macro engine
+        // asked for the hide at all, which separates "the rule never fired"
+        // from "the rule fired but the report was not rewritten".
+        case 0x88: return write_config_value(buffer, bufsize, (uint16_t) (macro_suppress_mask() & 0xFFFF));
+        case 0x89: return write_config_value(buffer, bufsize, (uint16_t) ((macro_suppress_mask() >> 16) & 0xFFFF));
+        case 0x8a: return write_config_value(buffer, bufsize, (uint16_t) (macro_inject_mask() & 0xFFFF));
+        case 0x8b: return write_config_value(buffer, bufsize, (uint16_t) ((macro_inject_mask() >> 16) & 0xFFFF));
+        // Stick suppression and overall activity. A STICK macro does not touch
+        // the button suppress mask - it centres the stick through its own
+        // flags - so a stick remap looked like "nothing hidden" in the readout
+        // above even while it was working correctly.
+        //   bit0 left stick centred, bit1 right stick centred,
+        //   bit2 macro engine wants the report rewritten this tick
+        case 0x8c: { extern bool macro_report_active();
+                     const uint8_t v = (uint8_t) ((macro_suppress_stick(false) ? 1 : 0) |
+                                                  (macro_suppress_stick(true)  ? 2 : 0) |
+                                                  (macro_report_active()       ? 4 : 0));
+                     return write_config_value(buffer, bufsize, v); }
+        // Keyboard/mouse output right now: keys held, the first key's HID usage,
+        // and the mouse button mask.
+        case 0x8d: { uint8_t n{}, k{}, mb{}; macro_output_state(n, k, mb);
+                     return write_config_value(buffer, bufsize, (uint16_t) (n | (mb << 4) | (k << 8))); }
         // Degrees rotated (x10) since the last read, so 1:1 can be VERIFIED.
         case 0x83: { extern uint32_t gyro_natural_degrees_x10_read();
                      const uint32_t d = gyro_natural_degrees_x10_read();

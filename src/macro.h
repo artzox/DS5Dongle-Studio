@@ -320,6 +320,10 @@ bool macro_motion_capturing();
 uint32_t macro_suppress_mask();   // logical buttons to CLEAR
 uint32_t macro_inject_mask();     // logical buttons to SET
 bool     macro_suppress_stick(bool right);
+// True when the macro engine needs the outgoing report rewritten this tick.
+bool     macro_report_active();
+// Live keyboard/mouse output, for diagnostics (see macro_output_state).
+void     macro_output_state(uint8_t &keys_held, uint8_t &first_key, uint8_t &mouse_btns);
 
 // Analog travel for an L2/R2 controller output, or 0 when that output is not
 // active. Non-zero only when a TRIGGER is driving a trigger: remapping L2 to R2
