@@ -601,6 +601,76 @@ static void t_stick_to_keys() {
        !key_down_now(K_A) && !key_down_now(K_D), "recentring releases everything");
 }
 
+// The resting-jitter case. Without STICK_ALWAYS the stick is only centred past
+// the threshold, so at rest the pad's own noise reaches the game as a stream of
+// changing axis values - which is what flips a game's button prompts back to
+// controller glyphs while the macro's keys say keyboard.
+static void t_stick_always_centres() {
+    printf("stick: centre-always keeps the stick zeroed at rest\n");
+    fresh_device();
+    MacroRecord r = stick_macro(false, 0, true);
+    r.entry.flags |= MACRO_FLAG_STICK_ALWAYS;
+    macro_set_entry(0, r);
+    enable_only(1u << 0);
+
+    // At rest, and with a few counts of jitter - both must still be suppressed.
+    lstick(0, 0); settle();
+    ok(macro_suppress_stick(false), "centred stick is suppressed at rest");
+    lstick(3, -2); settle();
+    ok(macro_suppress_stick(false), "sub-threshold jitter is suppressed too");
+    ok(!key_down_now(K_W) && !key_down_now(K_A),
+       "...without firing any key below the threshold");
+    ok(!macro_suppress_stick(true), "the other stick is left alone");
+
+    // Past the threshold it behaves exactly as before.
+    lstick(0, -100); settle();
+    ok(key_down_now(K_W), "a real deflection still fires its key");
+    ok(macro_suppress_stick(false), "and is still suppressed");
+
+    // The flag must not leak to rows that did not ask for it.
+    fresh_device();
+    macro_set_entry(0, stick_macro(false, 0, true));
+    enable_only(1u << 0);
+    lstick(0, 0); settle();
+    ok(!macro_suppress_stick(false),
+       "without the flag a resting stick is NOT suppressed (old behaviour kept)");
+
+    // REPLACE is still required: the flag alone must not zero a stick, or a
+    // plain stick-to-keys row would silently lose its analog output.
+    fresh_device();
+    MacroRecord r2 = stick_macro(false, 0, false);
+    r2.entry.flags |= MACRO_FLAG_STICK_ALWAYS;
+    macro_set_entry(0, r2);
+    enable_only(1u << 0);
+    lstick(0, 0); settle();
+    ok(!macro_suppress_stick(false), "the flag alone, without REPLACE, suppresses nothing");
+    lstick(0, -100); settle();
+    ok(!macro_suppress_stick(false), "...even when deflected");
+    ok(key_down_now(K_W), "...and the key still fires");
+
+    // A row disabled on this profile must never kill a stick.
+    fresh_device();
+    MacroRecord r3 = stick_macro(false, 0, true);
+    r3.entry.flags |= MACRO_FLAG_STICK_ALWAYS;
+    macro_set_entry(0, r3);
+    enable_only(1u << 0);
+    g_cfg.macro_disable = MACRO_NONE_ENABLED;   // row 0 off on this profile
+    lstick(0, 0); settle();
+    ok(!macro_suppress_stick(false), "a row disabled on this profile does not centre the stick");
+    enable_only(1u << 0);
+
+    // The rewrite gate must see stick-only work, or main.cpp skips the whole
+    // rewrite and the suppression never reaches the outgoing report (v1.32.8).
+    fresh_device();
+    MacroRecord r4 = stick_macro(false, 0, true);
+    r4.entry.flags |= MACRO_FLAG_STICK_ALWAYS;
+    macro_set_entry(0, r4);
+    enable_only(1u << 0);
+    lstick(0, 0); settle();
+    ok(macro_report_active(),
+       "a resting suppressed stick still marks the report as needing a rewrite");
+}
+
 static void t_stick_hysteresis() {
     printf("stick: resting on the threshold must not chatter\n");
     fresh_device();
@@ -657,6 +727,7 @@ int main() {
     t_trigger_to_trigger_is_analog();
     t_mouse_outputs();
     t_stick_to_keys();
+    t_stick_always_centres();
     t_stick_hysteresis();
     t_hold_released_on_suspend();
     t_disabled_hold_row_is_inert();
