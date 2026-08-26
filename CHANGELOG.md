@@ -2,6 +2,53 @@
 
 All notable changes to this project are documented here.
 
+## [1.33.0] — 2026-08-26
+
+### Added
+
+- **Centre stick always** — a new option on a stick macro row, beside *hide
+  input from game*. With *hide* alone the stick is only centred for the game
+  while a direction is past the threshold, so at rest the pad's own jitter still
+  reaches the game as a stream of small, constantly changing axis values. A
+  game's dead zone stops that from moving the character, but prompt detection
+  usually reads raw deltas before the dead zone — so the on-screen button prompts
+  flip back to controller glyphs while the macro's keys say keyboard, over and
+  over. Nothing in the game's settings can fix it; the values have to stop
+  leaving the dongle. Turn this on and the stick is centred for as long as the
+  row is enabled.
+
+  It is **opt-in**, and rows saved before this release are unchanged. The old
+  behaviour is a legitimate hybrid — fine pressure walking the character as
+  analog while a hard push fires a key — and switching it on by default would
+  break those rows silently.
+
+- **Live test panel on the Macros tab.** The portal reads the same interface the
+  game does, so it can show the report *after* the firmware has rewritten it:
+  buttons, sticks, triggers, touchpad and the Edge Fn buttons and paddles, with
+  the observed report rate. Alongside it, the macro engine's own view of what it
+  is hiding and injecting this tick — moved here from the Device tab, where it
+  sat one tab away from the rows it describes. Together they separate "the rule
+  never fired" from "the rewrite never reached the report".
+
+  The stick threshold is drawn as a ring, the two-stage boundary as a line on
+  the trigger bar, and the touchpad's neutral band is shaded with the last
+  press's landing point marked — the position that decides which half fires.
+
+### Fixed
+
+- `tools/t2-tests` had not compiled since 1.32.8, when the rewrite gate began
+  calling `macro_report_active()` that the harness does not stub. It reported
+  nothing from then on. Both missing stubs added; the suite passes again.
+
+### Tools
+
+- `tools/run-portal-tests.sh` now runs `tools/portal-buttons-test.js`, which had
+  shipped since 1.29.1 without ever being invoked by the release gate — the
+  second time a test file has been added without being wired in, after
+  `portal-motion-test.js` in 1.20.0 (and `t2-tests` above makes three ways a
+  suite can go quiet). Every `portal-*.js` in `tools/` is now invoked, and the
+  runner's stale "three regression harnesses" comment is corrected.
+
 ## [1.32.11] — 2026-08-02
 
 ### Fixed

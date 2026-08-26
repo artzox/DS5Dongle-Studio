@@ -2498,24 +2498,15 @@ async function readDiag(){
     try { ke = await readField(0x3c, 'u8'); } catch(e) {}
     let rl = null, rr = null, rf = null;
     try { rl = await readField(0x3d, 'u8'); rr = await readField(0x3e, 'u8'); rf = await readField(0x3f, 'u8'); } catch(e) {}
-    // Touchpad-click diagnostics: where the finger landed, how many clicks the
-    // firmware has seen, and which half the last one resolved to.
-    let padx = null, padinfo = null;
-    try { padx = await readField(0x7b, 'u16'); padinfo = await readField(0x7c, 'u8'); } catch(e) {}
-    let supLo = null, supHi = null, injLo = null, injHi = null;
-    try {
-      supLo = await readField(0x88, 'u16'); supHi = await readField(0x89, 'u16');
-      injLo = await readField(0x8a, 'u16'); injHi = await readField(0x8b, 'u16');
-    } catch(e) {}
-    let stickSup = null;
-    try { stickSup = await readField(0x8c, 'u8'); } catch(e) {}
-    let kbOut = null;
-    try { kbOut = await readField(0x8d, 'u16'); } catch(e) {}
+    // The touchpad-click (0x7b/0x7c) and macro-engine (0x88-0x8d) fields are no
+    // longer read here: they moved to the Macros tab and are fetched by
+    // readMacroDiag(), so this poll does not pay for reads the Device tab has
+    // nothing to show.
     // Battery (0x68), read from the DualSense input report. (The auto-haptics
     // meters 0x69-0x6b now live on the Haptics tab, read by readAhMeter().)
     let bat = null;
     try { bat = await readField(0x68, 'u8'); } catch(e) {}
-    return {kbOut, stickSup, supLo, supHi, injLo, injHi, padx, padinfo, br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
+    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
   } catch(e){ return {br:'err', ch:'err', rssi:null, gy:null, sy:null, c01:null, c23:null, ke:null, rl:null, rr:null, rf:null, bat:null}; }
 }
 function rssiLabel(r){
@@ -2578,36 +2569,11 @@ async function refreshDiag(){
       if (d.ke !== null && d.ke !== undefined)
         extra += `<br>Push-back envelope: ${d.ke}/255  (must rise with rumble/gunfire while AT-engaged; kick fires at >=32 - if this stays 0 during rumble, the selected source isn't producing signal)`;
     }
-    if (d.supLo !== null && d.supLo !== undefined) {
-      const sup = ((d.supHi << 16) >>> 0) | d.supLo;
-      const inj = ((d.injHi << 16) >>> 0) | d.injLo;
-      const names = m => BTN.filter(b => (m & b[1])).map(b => b[2]).join(' + ') || 'none';
-      // A stick macro hides its stick through separate flags, not the button
-      // mask, so both have to be reported or a working stick remap reads as
-      // "nothing hidden".
-      const hid = [];
-      if (sup) hid.push(names(sup));
-      if (d.stickSup & 1) hid.push('left stick');
-      if (d.stickSup & 2) hid.push('right stick');
-      // Three separate output paths, and only one of them is the inject mask:
-      // controller buttons go into the report, keys go out on the keyboard
-      // interface, mouse actions on the mouse interface. Showing only the first
-      // made a working keyboard remap look like it was doing nothing.
-      const nKeys = (d.kbOut || 0) & 0x0F;
-      const mBtns = ((d.kbOut || 0) >> 4) & 0x0F;
-      const key1  = ((d.kbOut || 0) >> 8) & 0xFF;
-      const out = [];
-      if (inj) out.push(`buttons: ${names(inj) || inj}`);
-      if (nKeys) out.push(`${nKeys} key${nKeys > 1 ? 's' : ''} held${key1 ? ` (first usage 0x${key1.toString(16)})` : ''}`);
-      if (mBtns) out.push(`mouse buttons 0x${mBtns.toString(16)}`);
-      extra += `<br>Macro output right now: hiding <b>${hid.length ? hid.join(' + ') : 'nothing'}</b>, sending <b>${out.length ? out.join(', ') : 'nothing'}</b>` +
-               `, report rewrite ${(d.stickSup & 4) ? 'ON' : 'off'}` +
-               `  (hold the input that will not hide and re-read. NOT listed = the macro rule never fired, so check the row is a hold with the box ticked. Listed but the game still sees it = the report is being rewritten and something downstream is re-adding it.)`;
-    }
-    if (d.padx !== null && d.padx !== undefined) {
-      const half = ['unqualified (centre band, or no finger)','LEFT','RIGHT'][d.padinfo & 3] || '?';
-      extra += `<br>Touchpad click: last finger-down x=${d.padx}/1919, clicks seen=${(d.padinfo >> 2) & 63}, last half=<b>${half}</b>  (the half is taken from where the finger LANDED, not from the position while pressing. Click each side a few times: the count should rise by exactly one per click and the half should match the side you used)`;
-    }
+    // The macro-engine readout (suppress / inject / stick / keyboard state) and
+    // the touchpad-click diagnostics MOVED TO THE MACROS TAB, next to the rows
+    // they describe and beside the live test that corroborates them. Reading
+    // "hiding L3" here while the macro row sat on another tab meant holding the
+    // two halves of the diagnosis in your head; see macroLivePanelHTML().
     if (d.rl !== null && d.rl !== undefined) {
       const rq = [];
       if (d.rf & 1) rq.push('EnableRumbleEmulation');
@@ -2636,6 +2602,7 @@ setInterval(()=>{
     await readLoadedProfile();                              // every tab: keep the bar current
     if (document.getElementById('ahbox')) await readAhMeter();   // Haptics tab: live auto-haptics meter
     if (document.getElementById('diagbox')) await refreshDiag(); // Device tab only
+    if (document.getElementById('macrodiagout')) await readMacroDiag(); // Macros tab
     if (document.getElementById('abSignal')) await abPoll();     // browser audio bridge
   });
 }, 1000);
@@ -2987,6 +2954,8 @@ const MACRO_OFF_MOTION = 12, MACRO_OFF_MOTION_LEN = 14, MACRO_OFF_MOTION_STEP = 
 // the deflection a stick direction needs. Entry offsets 17 and 18.
 const MACRO_OFF_OUT_BTN = 17, MACRO_OFF_STICK_THRESH = 18;
 const MACRO_FLAG_LONG_PRESS = 0x01, MACRO_FLAG_HOLD = 0x02, MACRO_FLAG_REPLACE = 0x04;
+// Bit 3, mirroring MACRO_FLAG_STICK_ALWAYS in src/macro.h. Stick rows only.
+const MACRO_FLAG_STICK_ALWAYS = 0x08;
 const GEST_STICK = 0x20, GEST_STICK_RIGHT = 0x40;
 // Index IS the T2Button value, so order and position are load-bearing.
 // L2/R2 carry analog travel when a trigger drives them - see macro_analog_out().
@@ -4204,6 +4173,369 @@ function macroMotionImportPick(){
 // The prototype block. Deliberately SELF-CONTAINED and below the macro table:
 // the table above is hardware-verified and this must not be able to regress it.
 // If motion never ships, this block is what gets deleted.
+// ===== Live controller test (tier 1 prototype) + macro engine diagnostics =====
+// TWO HALVES OF ONE QUESTION, deliberately in one panel.
+//
+//  - The TESTER is push: the portal opens the same gamepad interface the GAME
+//    reads, so an 'inputreport' is the report AFTER the firmware has rewritten
+//    it - after macro suppression, injection and stick centring. It therefore
+//    shows what the game receives, not what the pad did. No bus traffic: it is
+//    a passive listener, unlike the 1 Hz polls, so it cannot collide with
+//    readAll on the shared 0x81 buffer.
+//  - The DIAGNOSTIC is polled from the firmware and says what the macro engine
+//    BELIEVES it is hiding and sending this tick.
+//
+// Read together they bracket a fault: engine says "hiding L3" while the tester
+// still lights L3 = the rewrite never reached the report (the 1.32.8 defect).
+// Engine says "hiding nothing" = the rule never fired, which is a row problem.
+// That is why these belong side by side rather than one tab apart.
+const LIVE_FPS_MS = 33;             // ~30 fps: reports arrive at 250-1000 Hz and
+                                    // redrawing per report would fight the UI.
+// Byte offsets mirror src/input_buttons.h (RPT_L2_AXIS / RPT_R2_AXIS). Sticks
+// occupy 0-3 ahead of them. Keep in step with the header.
+const RPT_L2_AXIS_JS = 4, RPT_R2_AXIS_JS = 5;
+function macroLiveReport(ev){
+  const st = window._macroLive; if (!st) return;
+  const d = ev.data; if (!d || d.byteLength < 10) return;
+  // Decode only. NO DOM work here and no macroRender() - this runs up to 1000
+  // times a second; the rAF writer below owns the drawing.
+  st.mask = macroButtonMask(d);
+  st.lx = d.getUint8(0); st.ly = d.getUint8(1);
+  st.rx = d.getUint8(2); st.ry = d.getUint8(3);
+  st.l2 = d.getUint8(RPT_L2_AXIS_JS); st.r2 = d.getUint8(RPT_R2_AXIS_JS);
+  const f1 = macroTouchPoint(d, 0), f2 = macroTouchPoint(d, 1);
+  st.f1 = f1; st.f2 = f2;
+  if (f1 && f1.down && !st.tDown){ st.tDown = true; st.landX = f1.x; }
+  else if (f1 && !f1.down) st.tDown = false;
+  // THE HALF BITS ARE NOT IN THE REPORT. The pad is one physical switch: the
+  // controller sets the generic click bit and nothing else, and 23/24 are
+  // synthesised inside the firmware (apply_pad_half in macro.cpp) from where the
+  // finger LANDED. macroButtonMask() therefore cannot produce them and a click
+  // on either side reads as a plain "Touchpad click".
+  //
+  // The tester derives them the same way the firmware does, and LATCHES the
+  // half for the whole press exactly as apply_pad_half does - re-deriving per
+  // report would let a finger drifting across the middle flip the half
+  // mid-press, which is the 1.30.2 bug. Gated on a finger being present, so a
+  // knuckle or pad-edge click stays unqualified rather than reusing a stale
+  // landing.
+  if (st.mask & (1<<17)){
+    if (!st.half) st.half = (st.tDown ? macroPadHalf(st.landX) : 0);
+    st.mask |= st.half;
+  } else st.half = 0;
+  st.seen = (st.seen | st.mask) >>> 0;
+  st.n++;
+  const now = performance.now();
+  if (now - st.rateAt >= 1000){ st.rate = Math.round(st.n * 1000 / (now - st.rateAt)); st.n = 0; st.rateAt = now; }
+}
+// ===== Tier 2: the visual pad =====
+// Built ONCE as static SVG with ids, then updated per frame by touching a
+// handful of attributes. Rebuilding the markup at 30 fps would churn the DOM
+// for no reason, and innerHTML on every frame makes text selection impossible.
+// macroRender() destroys the box often (a recording status update redraws it
+// several times a second), so the tick checks isConnected and re-injects.
+const LP_COL_OFF = '#2a2f36', LP_COL_ON = '#4caf50', LP_COL_EDGE = '#a070d0';
+// Where each button bit is drawn. [bit, shape, x, y, w/r, h, label]
+// 'r' = rect, 'c' = circle, 'p' = pill with a label.
+const LP_SHAPES = [
+  [1<<0,  'r', 62,  74,  16, 16, ''],      // D-pad up
+  [1<<1,  'r', 62,  110, 16, 16, ''],      // down
+  [1<<2,  'r', 44,  92,  16, 16, ''],      // left
+  [1<<3,  'r', 80,  92,  16, 16, ''],      // right
+  [1<<4,  'c', 340, 100, 11, 0,  '□'],     // Square
+  [1<<5,  'c', 362, 122, 11, 0,  '✕'],     // Cross
+  [1<<6,  'c', 384, 100, 11, 0,  '○'],     // Circle
+  [1<<7,  'c', 362, 78,  11, 0,  '△'],     // Triangle
+  [1<<8,  'p', 40,  16,  38, 16, 'L1'],
+  [1<<9,  'p', 342, 16,  38, 16, 'R1'],
+  [1<<12, 'p', 100, 96,  46, 16, 'Create'],
+  [1<<13, 'p', 272, 96,  50, 16, 'Options'],
+  [1<<16, 'p', 190, 150, 30, 16, 'PS'],
+  [1<<18, 'p', 226, 150, 40, 16, 'Mute'],
+  [1<<19, 'p', 26,  224, 44, 15, 'Fn L'],
+  [1<<20, 'p', 350, 224, 44, 15, 'Fn R'],
+  [1<<21, 'p', 76,  224, 58, 15, 'Paddle L'],
+  [1<<22, 'p', 286, 224, 58, 15, 'Paddle R'],
+];
+function macroLivePadSVG(){
+  const g = (id, body) => '<g id="' + id + '">' + body + '</g>';
+  let s = '<svg id="lp_svg" viewBox="0 0 420 246" style="width:100%;max-width:460px;height:auto">';
+  // triggers
+  s += '<rect x="40" y="36" width="120" height="14" rx="3" fill="#222"/>' +
+       '<rect id="lp_l2bar" x="40" y="36" width="0" height="14" rx="3" fill="#4a90d9"/>' +
+       '<line id="lp_l2t2" x1="40" y1="34" x2="40" y2="52" stroke="#e0a030" stroke-width="2" visibility="hidden"/>' +
+       '<text x="40" y="66" font-size="10" fill="#8b9197">L2</text>' +
+       '<text id="lp_l2txt" x="160" y="66" font-size="10" fill="#8b9197" text-anchor="end">0</text>';
+  s += '<rect x="260" y="36" width="120" height="14" rx="3" fill="#222"/>' +
+       '<rect id="lp_r2bar" x="260" y="36" width="0" height="14" rx="3" fill="#4a90d9"/>' +
+       '<line id="lp_r2t2" x1="260" y1="34" x2="260" y2="52" stroke="#e0a030" stroke-width="2" visibility="hidden"/>' +
+       '<text x="260" y="66" font-size="10" fill="#8b9197">R2</text>' +
+       '<text id="lp_r2txt" x="380" y="66" font-size="10" fill="#8b9197" text-anchor="end">0</text>';
+  // touchpad, with the neutral band drawn so an ambiguous click is visibly
+  // ambiguous rather than a surprise
+  s += '<rect x="150" y="74" width="120" height="62" rx="5" fill="#1a1e23" stroke="#3a3f45"/>' +
+       '<rect id="lp_padL" x="150" y="74" width="49" height="62" fill="#4caf50" opacity="0"/>' +
+       '<rect id="lp_padR" x="221" y="74" width="49" height="62" fill="#4caf50" opacity="0"/>' +
+       '<rect x="199" y="74" width="22" height="62" fill="#8b9197" opacity="0.12"/>' +
+       '<line x1="210" y1="74" x2="210" y2="136" stroke="#3a3f45" stroke-dasharray="3 3"/>' +
+       '<circle id="lp_touch" cx="210" cy="105" r="4" fill="#e0a030" visibility="hidden"/>' +
+       '<circle id="lp_land" cx="210" cy="105" r="6" fill="none" stroke="#e0a030" stroke-dasharray="2 2" visibility="hidden"/>';
+  // sticks: outer body, threshold ring, live dot
+  for (const [id, cx] of [['l', 110], ['r', 310]]){
+    s += '<circle cx="' + cx + '" cy="176" r="34" fill="#1a1e23" stroke="#3a3f45"/>' +
+         '<circle id="lp_' + id + 'sring" cx="' + cx + '" cy="176" r="16" fill="none" stroke="#8b9197" stroke-dasharray="2 3" opacity="0.7"/>' +
+         '<circle id="lp_' + id + 'sbody" cx="' + cx + '" cy="176" r="34" fill="none" stroke="' + LP_COL_OFF + '" stroke-width="3"/>' +
+         '<circle id="lp_' + id + 'sdot" cx="' + cx + '" cy="176" r="6" fill="#4a90d9"/>';
+  }
+  s += '<text x="110" y="221" font-size="9" fill="#8b9197" text-anchor="middle">L stick</text>';
+  s += '<text x="310" y="221" font-size="9" fill="#8b9197" text-anchor="middle">R stick</text>';
+  // everything driven purely by a button bit
+  for (const [bit, kind, x, y, a, b, label] of LP_SHAPES){
+    const id = 'lp_b' + bit;
+    if (kind === 'r')
+      s += '<rect id="' + id + '" x="' + x + '" y="' + y + '" width="' + a + '" height="' + b + '" rx="2" fill="' + LP_COL_OFF + '"/>';
+    else if (kind === 'c')
+      s += g(id + '_g', '<circle id="' + id + '" cx="' + x + '" cy="' + y + '" r="' + a + '" fill="' + LP_COL_OFF + '"/>' +
+              '<text x="' + x + '" y="' + (y + 4) + '" font-size="11" fill="#cfd4da" text-anchor="middle">' + label + '</text>');
+    else
+      s += g(id + '_g', '<rect id="' + id + '" x="' + x + '" y="' + y + '" width="' + a + '" height="' + b + '" rx="7" fill="' + LP_COL_OFF + '"/>' +
+              '<text x="' + (x + a/2) + '" y="' + (y + b - 4) + '" font-size="10" fill="#cfd4da" text-anchor="middle">' + label + '</text>');
+  }
+  s += '</svg>';
+  return s;
+}
+// The macro stick threshold, in report counts, for the ring. A stick row with
+// its own value wins; otherwise the firmware default (macro.h
+// MACRO_STICK_THRESH = 48 of 127). Drawing it is what turns "why is my stick
+// leaking through" into something you can see: inside the ring the row has not
+// engaged, so REPLACE is not centring the stick.
+const LP_STICK_THRESH_DEFAULT = 48;
+function macroLiveThresh(right){
+  const rows = window._macroRows || [];
+  for (const m of rows){
+    if (!m || !m.present) continue;
+    if (!(m.gesture & GEST_STICK)) continue;
+    if (!!(m.gesture & GEST_STICK_RIGHT) !== right) continue;
+    return m.stick_thresh || LP_STICK_THRESH_DEFAULT;
+  }
+  return LP_STICK_THRESH_DEFAULT;
+}
+function macroLivePadUpdate(st){
+  const $ = id => document.getElementById(id);
+  for (const [bit] of LP_SHAPES){
+    const el = $('lp_b' + bit); if (!el) continue;
+    const on = (st.mask & bit) !== 0;
+    el.setAttribute('fill', on ? (bit >= (1<<19) ? LP_COL_EDGE : LP_COL_ON) : LP_COL_OFF);
+  }
+  // triggers: bar plus the two-stage boundary, so the wall you feel and the
+  // boundary that fires the second stage can be lined up.
+  for (const [id, v, posKey, modeKey, x0] of
+       [['l2', st.l2, 't2_l2_pos', 't2_l2_mode', 40], ['r2', st.r2, 't2_pos', 't2_mode', 260]]){
+    const bar = $('lp_' + id + 'bar'), txt = $('lp_' + id + 'txt'), t2 = $('lp_' + id + 't2');
+    if (bar) bar.setAttribute('width', String((v / 255) * 120));
+    if (txt) txt.textContent = String(v);
+    if (t2){
+      const pos = +config[posKey] || 0, mode = +config[modeKey] || 0;
+      if (pos > 0 && mode > 0){
+        const x = x0 + (pos / 255) * 120;
+        t2.setAttribute('x1', String(x)); t2.setAttribute('x2', String(x));
+        t2.setAttribute('visibility', 'visible');
+      } else t2.setAttribute('visibility', 'hidden');
+    }
+  }
+  // sticks
+  for (const [id, cx, xv, yv, clickBit, right] of
+       [['l', 110, st.lx, st.ly, 1<<14, false], ['r', 310, st.rx, st.ry, 1<<15, true]]){
+    const dot = $('lp_' + id + 'sdot'), body = $('lp_' + id + 'sbody'), ring = $('lp_' + id + 'sring');
+    if (dot){
+      dot.setAttribute('cx', String(cx + ((xv - 128) / 128) * 28));
+      dot.setAttribute('cy', String(176 + ((yv - 128) / 128) * 28));
+      // Green once past the threshold: that is the moment a stick row engages
+      // and, with Replace, the moment the stick is centred for the game.
+      const th = macroLiveThresh(right);
+      const past = Math.abs(xv - 128) >= th || Math.abs(yv - 128) >= th;
+      dot.setAttribute('fill', past ? LP_COL_ON : '#4a90d9');
+    }
+    if (ring) ring.setAttribute('r', String((macroLiveThresh(right) / 128) * 28));
+    if (body) body.setAttribute('stroke', (st.mask & clickBit) ? LP_COL_ON : LP_COL_OFF);
+  }
+  // touchpad: live finger, plus where the last press LANDED - which is what
+  // decides the half, not where the finger is while pressing.
+  const touch = $('lp_touch'), land = $('lp_land');
+  if (touch){
+    if (st.f1 && st.f1.down){
+      touch.setAttribute('cx', String(150 + (st.f1.x / 1919) * 120));
+      touch.setAttribute('cy', String(74 + (st.f1.y / 1079) * 62));
+      touch.setAttribute('visibility', 'visible');
+    } else touch.setAttribute('visibility', 'hidden');
+  }
+  if (land){
+    if (st.landX === undefined) land.setAttribute('visibility', 'hidden');
+    else {
+      land.setAttribute('cx', String(150 + (st.landX / 1919) * 120));
+      land.setAttribute('visibility', 'visible');
+    }
+  }
+  const pl = $('lp_padL'), pr = $('lp_padR');
+  if (pl) pl.setAttribute('opacity', (st.mask & (1<<23)) ? '0.35' : '0');
+  if (pr) pr.setAttribute('opacity', (st.mask & (1<<24)) ? '0.35' : '0');
+}
+function macroLiveBar(v, c){
+  return '<span style="display:inline-block;width:90px;height:8px;background:#222;border-radius:3px;vertical-align:middle;overflow:hidden">' +
+         '<span style="display:block;width:' + Math.round((v/255)*100) + '%;height:100%;background:' + c + '"></span></span>';
+}
+function macroLiveHTML(){
+  const st = window._macroLive;
+  if (!st) return '<span style="color:var(--sub)">Not running.</span>';
+  if (!st.rate && !st.n) return '<span style="color:var(--sub)">Waiting for the first report — press a button or move a stick.</span>';
+  const half = macroPadHalf(st.landX);
+  const halfTxt = half === (1<<23) ? 'LEFT' : half === (1<<24) ? 'RIGHT' : 'unqualified (centre band)';
+  const st2 = (v) => (v - 128);
+  let h = '<div style="font-family:ui-monospace,monospace;font-size:12px;line-height:1.7">';
+  h += 'Held now: <b>' + (macroChordName(st.mask) || '<span style="color:var(--sub)">nothing</span>') + '</b>' +
+       ' <span style="color:var(--sub)">(mask 0x' + st.mask.toString(16) + ')</span><br>';
+  h += 'Seen since start: ' + (macroChordName(st.seen) || '<span style="color:var(--sub)">nothing yet</span>') +
+       '<br>';
+  h += 'Sticks: L ' + st2(st.lx) + ',' + st2(st.ly) + '  R ' + st2(st.rx) + ',' + st2(st.ry) + '<br>';
+  h += 'L2 ' + macroLiveBar(st.l2, '#4a90d9') + ' ' + st.l2 +
+       '   R2 ' + macroLiveBar(st.r2, '#4a90d9') + ' ' + st.r2 + '<br>';
+  if (st.f1) h += 'Touch: ' + (st.f1.down ? ('x=' + st.f1.x + ' y=' + st.f1.y) : 'no finger') +
+                  (st.f2 && st.f2.down ? '  (two fingers)' : '') +
+                  '  last landing x=' + (st.landX === undefined ? '—' : st.landX) +
+                  ' → <b>' + halfTxt + '</b>' +
+                  ' <span style="color:var(--sub)">(derived — the pad is one switch, so the half is worked out ' +
+                  'from the landing exactly as the firmware does; it is never in the report)</span><br>';
+  h += 'Report rate: <b>' + (st.rate || '…') + '</b>/s';
+  h += '</div>';
+  return h;
+}
+function macroLiveTick(){
+  const st = window._macroLive; if (!st) return;
+  const now = performance.now();
+  if (now - st.drawAt >= LIVE_FPS_MS){
+    st.drawAt = now;
+    // Look the element up every frame rather than caching it: macroRender()
+    // rebuilds the whole box (a recording status update does it several times a
+    // second), so a cached node goes stale. Missing element = draw nothing and
+    // keep looping, which self-heals on the next render.
+    const host = document.getElementById('macrolivepad');
+    if (host){
+      // The SVG is static markup built once; only attributes change per frame.
+      // isConnected catches the case where macroRender() replaced the box
+      // underneath us, so the pad is re-injected rather than updated into a
+      // detached node.
+      if (!st.svg || !st.svg.isConnected){
+        host.innerHTML = macroLivePadSVG();
+        st.svg = document.getElementById('lp_svg');
+      }
+      if (st.svg) macroLivePadUpdate(st);
+    }
+    const el = document.getElementById('macroliveout');
+    if (el) el.innerHTML = macroLiveHTML();
+  }
+  st.raf = requestAnimationFrame(macroLiveTick);
+}
+function macroLiveToggle(){
+  if (window._macroLive){
+    try { device.removeEventListener('inputreport', macroLiveReport); } catch(e){}
+    try { cancelAnimationFrame(window._macroLive.raf); } catch(e){}
+    window._macroLive = null;
+  } else {
+    if (!device) return;
+    window._macroLive = { mask:0, seen:0, half:0, lx:128, ly:128, rx:128, ry:128, l2:0, r2:0,
+                          f1:null, f2:null, tDown:false, landX:undefined,
+                          n:0, rate:0, rateAt:performance.now(), drawAt:0, raf:0, svg:null };
+    try { device.addEventListener('inputreport', macroLiveReport); } catch(e){}
+    window._macroLive.raf = requestAnimationFrame(macroLiveTick);
+  }
+  macroRender();
+}
+// Polled half. Reads ONLY the macro-engine fields - the touchpad-click
+// diagnostics (0x7b/0x7c) and the suppress/inject/stick/keyboard state
+// (0x88-0x8d). These used to sit in readDiag() on the Device tab, one tab away
+// from the macro rows they describe.
+async function readMacroDiag(){
+  if (saving || !device || !device.opened) return;
+  let padx = null, padinfo = null, supLo = null, supHi = null, injLo = null, injHi = null,
+      stickSup = null, kbOut = null;
+  try { padx = await readField(0x7b, 'u16'); padinfo = await readField(0x7c, 'u8'); } catch(e) {}
+  try {
+    supLo = await readField(0x88, 'u16'); supHi = await readField(0x89, 'u16');
+    injLo = await readField(0x8a, 'u16'); injHi = await readField(0x8b, 'u16');
+  } catch(e) {}
+  try { stickSup = await readField(0x8c, 'u8'); } catch(e) {}
+  try { kbOut = await readField(0x8d, 'u16'); } catch(e) {}
+  const el = document.getElementById('macrodiagout');
+  if (el) el.innerHTML = macroDiagHTML({padx, padinfo, supLo, supHi, injLo, injHi, stickSup, kbOut});
+}
+function macroDiagHTML(d){
+  if (d.supLo === null || d.supLo === undefined)
+    return '<span style="color:var(--sub)">Connect to see what the macro engine is doing.</span>';
+  const sup = ((d.supHi << 16) >>> 0) | d.supLo;
+  const inj = ((d.injHi << 16) >>> 0) | d.injLo;
+  const names = m => macroChordName(m) || 'none';
+  // A stick macro hides its stick through separate flags, not the button mask,
+  // so both have to be reported or a working stick remap reads as "nothing
+  // hidden".
+  const hid = [];
+  if (sup) hid.push(names(sup));
+  if (d.stickSup & 1) hid.push('left stick');
+  if (d.stickSup & 2) hid.push('right stick');
+  // Three separate output paths and only one is the inject mask: controller
+  // buttons go into the report, keys out on the keyboard interface, mouse
+  // actions on the mouse interface.
+  const nKeys = (d.kbOut || 0) & 0x0F;
+  const mBtns = ((d.kbOut || 0) >> 4) & 0x0F;
+  const key1  = ((d.kbOut || 0) >> 8) & 0xFF;
+  const out = [];
+  if (inj) out.push('buttons: ' + (names(inj) || inj));
+  if (nKeys) out.push(nKeys + ' key' + (nKeys > 1 ? 's' : '') + ' held' + (key1 ? ' (first usage 0x' + key1.toString(16) + ')' : ''));
+  if (mBtns) out.push('mouse buttons 0x' + mBtns.toString(16));
+  let h = 'Hiding <b>' + (hid.length ? hid.join(' + ') : 'nothing') + '</b>, sending <b>' +
+          (out.length ? out.join(', ') : 'nothing') + '</b>, report rewrite ' +
+          ((d.stickSup & 4) ? '<b>ON</b>' : 'off');
+  if (d.padx !== null && d.padx !== undefined){
+    const half = ['unqualified (centre band, or no finger)','LEFT','RIGHT'][d.padinfo & 3] || '?';
+    h += '<br>Touchpad click: last finger-down x=' + d.padx + '/1919, clicks seen=' +
+         ((d.padinfo >> 2) & 63) + ', last half=<b>' + half + '</b>';
+  }
+  h += '<div style="color:var(--sub);font-size:11px;margin-top:5px">Polled once a second. ' +
+       'Hold the input that will not hide: NOT listed above = the rule never fired, so check the row is a hold with the box ticked. ' +
+       'Listed here but still lit in the live test = the rewrite is not reaching the report.</div>';
+  return h;
+}
+function macroLivePanelHTML(){
+  const on = !!window._macroLive;
+  let h = '<div style="margin-top:14px;border:1px solid var(--line,#333);border-radius:6px;padding:10px">';
+  h += '<div style="font-weight:600;font-size:13px;margin-bottom:4px">Live test — what the game is receiving ' +
+       '<span style="font-size:11px;color:var(--sub)">(prototype)</span></div>';
+  h += '<div style="font-size:12px;color:var(--sub);margin-bottom:8px">' +
+       'The portal reads the same interface the game does, so this is the report <b>after</b> the firmware has ' +
+       'rewritten it — hidden inputs are already gone and injected ones already present. Use it to prove a remap ' +
+       'end to end, to find which bits an Edge paddle actually sends, and to check a touchpad click resolves to the ' +
+       'half you meant.</div>';
+  h += '<button class="btn ' + (on ? '' : 'btn-outline') + '" style="padding:2px 10px;margin-bottom:8px" onclick="macroLiveToggle()"' +
+       (device ? '' : ' disabled') + '>' + (on ? 'Stop live test' : 'Start live test') + '</button>';
+  h += '<div id="macrolivepad" style="margin-bottom:4px"></div>';
+  h += '<div style="font-size:11px;color:var(--sub);margin-bottom:8px">' +
+       '<b style="color:#4caf50">green</b> = held · ' +
+       '<b style="color:#a070d0">purple</b> = Edge Fn / paddle · ' +
+       'a stick\'s outline lights on L3 / R3 · ' +
+       'the dashed ring is the macro stick threshold — inside it a stick row has not engaged, ' +
+       'so <i>hide input from game</i> is not centring the stick yet · ' +
+       'on the touchpad, the dot is the finger and the dashed circle is where the last press <b>landed</b>, ' +
+       'which is what decides the half · the shaded centre strip is the neutral band · ' +
+       'the amber line on a trigger is its two-stage boundary.</div>';
+  h += '<div id="macroliveout" style="font-size:12px">' +
+       (on ? '<span style="color:var(--sub)">starting…</span>'
+           : '<span style="color:var(--sub)">Not running.</span>') + '</div>';
+  h += '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line,#333)">';
+  h += '<div style="font-weight:600;font-size:13px;margin-bottom:4px">Macro engine, per tick</div>';
+  h += '<div id="macrodiagout" style="font-size:12px">' +
+       '<span style="color:var(--sub)">Connect to see what the macro engine is doing.</span></div>';
+  h += '</div></div>';
+  return h;
+}
 function macroMotionPanelHTML(){
   const rows = window._macroRows || [], mot = window._macroMotion || [];
   const rec = window._macroRec, t = window._macroTest;
@@ -4272,6 +4604,13 @@ function macroSetFlag(i, bit, on){
   if (bit === MACRO_FLAG_HOLD && on){
     m.flags = (m.flags|0) & ~MACRO_FLAG_LONG_PRESS;
     m.hold_cs = 0;
+  }
+  // Same reasoning for the stick option: it only means anything alongside
+  // REPLACE (and REPLACE only alongside HOLD), so clear it when its
+  // prerequisite goes rather than leave a set bit waiting to take effect the
+  // next time the box above is ticked.
+  if ((bit === MACRO_FLAG_REPLACE || bit === MACRO_FLAG_HOLD) && !on){
+    m.flags = (m.flags|0) & ~MACRO_FLAG_STICK_ALWAYS;
   }
   macroRender();
 }
@@ -4385,6 +4724,20 @@ function macroOptionsRowHTML(i, m, isStick, dis){
   h += '<label' + (hold ? '' : ' title="Only a held row can replace its input"') + '>' +
        '<input type="checkbox" onchange="macroSetFlag(' + i + ', MACRO_FLAG_REPLACE, this.checked)"' +
        ((m.flags & MACRO_FLAG_REPLACE) ? ' checked' : '') + (hold && !dis ? '' : ' disabled') + '> hide input from game</label>';
+  if (isStick){
+    // Stick rows only, and only meaningful alongside "hide input from game".
+    // Without it the stick is centred ONLY past the threshold, so at rest the
+    // pad's own jitter still reaches the game as a stream of changing axis
+    // values - enough to flip a game's button prompts back to controller
+    // glyphs while the macro's keys say keyboard.
+    const always = !!(m.flags & MACRO_FLAG_STICK_ALWAYS);
+    const canAlways = hold && !!(m.flags & MACRO_FLAG_REPLACE);
+    h += '<label style="margin-left:10px"' +
+         (canAlways ? ' title="Centre the stick for the game at all times, not only past the threshold. Turn this on if the game keeps switching its button prompts back to controller glyphs."'
+                    : ' title="Needs hold while held and hide input from game"') + '>' +
+         '<input type="checkbox" onchange="macroSetFlag(' + i + ', MACRO_FLAG_STICK_ALWAYS, this.checked)"' +
+         (always ? ' checked' : '') + (canAlways && !dis ? '' : ' disabled') + '> centre stick always</label>';
+  }
   if (isStick){
     h += '<div style="margin-top:5px">';
     STICK_DIRS.forEach((d, k) => {
@@ -4542,6 +4895,7 @@ function macroRender(){
   h += '<span id="macrosave" style="font-size:12px;color:var(--sub)"></span>';
   h += '</div>';
   h += macroMotionPanelHTML();
+  h += macroLivePanelHTML();
   box.innerHTML = h;
 }
 
@@ -4741,6 +5095,9 @@ const PANEL_SEARCH = [
   { tab:'macros', title:'Macros — hold and replace',
     blurb:'Hold keeps the output asserted while the input is held; Replace hides the input from the game.',
     terms:'hold held replace suppress hide remap toggle burst' },
+  { tab:'macros', title:'Macros — live test and diagnostics',
+    blurb:'See the report the game receives, and what the macro engine is hiding and sending right now.',
+    terms:'test tester live diagnostic diagnostics debug input report hide hiding suppress inject paddle fn touchpad half rate monitor' },
   { tab:'macros', title:'Macros — import, export and backup',
     blurb:'Macro definitions are shared by every profile and travel in their own file.',
     terms:'macro export import backup restore share file json save' },
@@ -5016,7 +5373,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.32.11</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.33.0</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
