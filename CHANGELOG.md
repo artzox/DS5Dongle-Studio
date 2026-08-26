@@ -1,6 +1,60 @@
 # Changelog
 
-Supersedes the 1.31.x and 1.32.x development builds, which were not released.
+All notable changes to this project are documented here.
+
+## [1.32.11] — 2026-08-02
+
+### Fixed
+- **Apply did nothing in the manual trigger picker.** It called a helper that
+  does not exist, so the handler threw before closing the panel: the panel
+  stayed open and the button looked dead. The pick had already been written to
+  the row, which is why pressing Cancel afterwards appeared to apply it - Cancel
+  closed the panel and the re-render showed the new chord. It now clears its
+  state and re-renders, the same way the keyboard picker always has, so Apply
+  and Cancel both close the panel immediately.
+
+### Changed
+- **The macro output readout now reports keys and mouse buttons too.** The
+  "injecting" figure only ever covered CONTROLLER buttons, because that is what
+  the inject mask holds - keys go out on the keyboard interface and mouse
+  actions on the mouse one. A keyboard remap therefore read as "injecting
+  nothing" while working perfectly. The line now reads "sending" and lists
+  controller buttons, how many keys are held, and mouse buttons.
+
+## [1.32.10] — 2026-08-02
+
+### Fixed
+- **The macro output readout ignored stick remaps.** A stick macro does not
+  touch the button suppress mask - it centres its stick through separate flags -
+  so a stick mapped to keys showed as "nothing hidden" in the diagnostic even
+  while it was hiding the stick correctly. The readout now reports centred
+  sticks alongside hidden buttons, names injected buttons instead of printing a
+  bit pattern, and shows whether the report is being rewritten at all this tick.
+
+## [1.32.9] — 2026-08-02
+
+### Added
+- **Live macro output readout** in the Device tab diagnostics: which buttons the
+  macro engine is hiding and injecting at this instant. Hold the button that
+  refuses to hide and read it - if the button is not listed as hidden, the rule
+  never fired; if it IS listed and the game still sees the press, the report is
+  being rewritten and something downstream is re-adding it. That splits a
+  "hiding does not work" report into two very different faults instead of
+  guessing which one it is.
+
+## [1.32.8] — 2026-08-02
+
+### Fixed
+- **"Hide input from game" and macro button injection did nothing unless a
+  trigger feature was also configured.** The decision about whether to rewrite
+  the outgoing report asked only about TRIGGER settings - dead zones and
+  two-stage modes - but the same path also applies macro suppression and
+  injection. With no trigger feature enabled, the report took the untouched
+  fast path and every macro rewrite was silently dropped: a Replace macro on L3
+  or R3 sent its keys AND the stick click, and the same applied to every other
+  button, to injected outputs and to centred sticks. Real-time polling was
+  unaffected, which is why this worked for some setups and not others. The
+  check now also asks the macro engine whether it has anything to write.
 
 ## [1.32.7] — 2026-08-02
 

@@ -2502,11 +2502,20 @@ async function readDiag(){
     // firmware has seen, and which half the last one resolved to.
     let padx = null, padinfo = null;
     try { padx = await readField(0x7b, 'u16'); padinfo = await readField(0x7c, 'u8'); } catch(e) {}
+    let supLo = null, supHi = null, injLo = null, injHi = null;
+    try {
+      supLo = await readField(0x88, 'u16'); supHi = await readField(0x89, 'u16');
+      injLo = await readField(0x8a, 'u16'); injHi = await readField(0x8b, 'u16');
+    } catch(e) {}
+    let stickSup = null;
+    try { stickSup = await readField(0x8c, 'u8'); } catch(e) {}
+    let kbOut = null;
+    try { kbOut = await readField(0x8d, 'u16'); } catch(e) {}
     // Battery (0x68), read from the DualSense input report. (The auto-haptics
     // meters 0x69-0x6b now live on the Haptics tab, read by readAhMeter().)
     let bat = null;
     try { bat = await readField(0x68, 'u8'); } catch(e) {}
-    return {padx, padinfo, br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
+    return {kbOut, stickSup, supLo, supHi, injLo, injHi, padx, padinfo, br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
   } catch(e){ return {br:'err', ch:'err', rssi:null, gy:null, sy:null, c01:null, c23:null, ke:null, rl:null, rr:null, rf:null, bat:null}; }
 }
 function rssiLabel(r){
@@ -2568,6 +2577,32 @@ async function refreshDiag(){
       extra += `<br>Trigger synthesis: ${f.length ? f.join(' · ') : 'idle'}  (game-owns = your r2t/at yield; use Force override to take over)`;
       if (d.ke !== null && d.ke !== undefined)
         extra += `<br>Push-back envelope: ${d.ke}/255  (must rise with rumble/gunfire while AT-engaged; kick fires at >=32 - if this stays 0 during rumble, the selected source isn't producing signal)`;
+    }
+    if (d.supLo !== null && d.supLo !== undefined) {
+      const sup = ((d.supHi << 16) >>> 0) | d.supLo;
+      const inj = ((d.injHi << 16) >>> 0) | d.injLo;
+      const names = m => BTN.filter(b => (m & b[1])).map(b => b[2]).join(' + ') || 'none';
+      // A stick macro hides its stick through separate flags, not the button
+      // mask, so both have to be reported or a working stick remap reads as
+      // "nothing hidden".
+      const hid = [];
+      if (sup) hid.push(names(sup));
+      if (d.stickSup & 1) hid.push('left stick');
+      if (d.stickSup & 2) hid.push('right stick');
+      // Three separate output paths, and only one of them is the inject mask:
+      // controller buttons go into the report, keys go out on the keyboard
+      // interface, mouse actions on the mouse interface. Showing only the first
+      // made a working keyboard remap look like it was doing nothing.
+      const nKeys = (d.kbOut || 0) & 0x0F;
+      const mBtns = ((d.kbOut || 0) >> 4) & 0x0F;
+      const key1  = ((d.kbOut || 0) >> 8) & 0xFF;
+      const out = [];
+      if (inj) out.push(`buttons: ${names(inj) || inj}`);
+      if (nKeys) out.push(`${nKeys} key${nKeys > 1 ? 's' : ''} held${key1 ? ` (first usage 0x${key1.toString(16)})` : ''}`);
+      if (mBtns) out.push(`mouse buttons 0x${mBtns.toString(16)}`);
+      extra += `<br>Macro output right now: hiding <b>${hid.length ? hid.join(' + ') : 'nothing'}</b>, sending <b>${out.length ? out.join(', ') : 'nothing'}</b>` +
+               `, report rewrite ${(d.stickSup & 4) ? 'ON' : 'off'}` +
+               `  (hold the input that will not hide and re-read. NOT listed = the macro rule never fired, so check the row is a hold with the box ticked. Listed but the game still sees it = the report is being rewritten and something downstream is re-adding it.)`;
     }
     if (d.padx !== null && d.padx !== undefined) {
       const half = ['unqualified (centre band, or no finger)','LEFT','RIGHT'][d.padinfo & 3] || '?';
@@ -3386,8 +3421,13 @@ function macroPickInApply(){
   const m = rows[p.row]; if (!m) { macroPickInClose(); return; }
   m.chord = p.mask >>> 0;
   if (m.chord) m.gesture = 0;      // a chord and a gesture are alternatives
-  macroDirty(p.row);
-  macroPickInClose();
+  // macroDirty() never existed - this threw here, so Apply appeared to do
+  // nothing and the panel stayed open. The change had already been written to
+  // the row, which is why pressing Cancel afterwards revealed it: Cancel closed
+  // the panel and the re-render showed the new chord. Follow the same pattern
+  // the keyboard picker uses: clear the picker state, then re-render.
+  window._macroPickIn = null;
+  macroRender();
 }
 function macroPickInHTML(i){
   const p = window._macroPickIn;
@@ -4976,7 +5016,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.32.7</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.32.11</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
