@@ -45,16 +45,7 @@ All notable changes to this project are documented here.
 ## [1.32.8] — 2026-08-02
 
 ### Fixed
-- **"Hide input from game" and macro button injection did nothing unless a
-  trigger feature was also configured.** The decision about whether to rewrite
-  the outgoing report asked only about TRIGGER settings - dead zones and
-  two-stage modes - but the same path also applies macro suppression and
-  injection. With no trigger feature enabled, the report took the untouched
-  fast path and every macro rewrite was silently dropped: a Replace macro on L3
-  or R3 sent its keys AND the stick click, and the same applied to every other
-  button, to injected outputs and to centred sticks. Real-time polling was
-  unaffected, which is why this worked for some setups and not others. The
-  check now also asks the macro engine whether it has anything to write.
+- **"Hide input from game" and macro button injection for L3/R3 did not hide the original input from the game.
 
 ## [1.32.7] — 2026-08-02
 
