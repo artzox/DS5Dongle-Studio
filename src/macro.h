@@ -183,6 +183,21 @@ enum : uint8_t {
     // the source stick zeroed, in the OUTBOUND report. Without it a remap is
     // additive and the game sees both the original and the replacement.
     MACRO_FLAG_REPLACE = 1u << 2,
+    // STICK_ALWAYS extends REPLACE on a STICK row from "while a direction is
+    // engaged" to "for as long as the row exists". Without it the stick is only
+    // centred past the threshold, so at rest the pad's own jitter still reaches
+    // the game - a stream of tiny CHANGING axis values. A game's dead zone kills
+    // the movement but prompt detection usually reads raw deltas before it, so
+    // the HUD flips to controller glyphs while the macro's keys say keyboard,
+    // over and over. Nothing in the game's settings can fix that; the values
+    // have to stop leaving the dongle.
+    //
+    // It is OPT-IN because the old behaviour is a legitimate hybrid: fine
+    // pressure walks the character as analog while a hard push fires a key.
+    // Turning it on by default would silently break those rows, and an entry
+    // saved before this flag existed has the bit clear, so upgrades keep
+    // behaving exactly as they did.
+    MACRO_FLAG_STICK_ALWAYS = 1u << 3,
 };
 
 // Default long-press threshold, centiseconds. 750 ms, matching ps_shortcut.

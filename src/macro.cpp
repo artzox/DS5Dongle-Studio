@@ -566,7 +566,14 @@ static void hold_task(const uint8_t *r, uint16_t len, uint32_t mask, uint32_t di
                 if (e.out_btn == 0) hold_add_key(e.keys[d]);
             }
             g_stick_latch[i] = next;
-            if (next && (e.flags & MACRO_FLAG_REPLACE)) {
+            // REPLACE alone centres the stick only while a direction is
+            // engaged. With STICK_ALWAYS it is centred unconditionally, which
+            // is what stops the resting jitter reaching the game. The row still
+            // has to be ENABLED on this profile - macro_is_enabled() above
+            // already skipped it otherwise - so a disabled row never kills a
+            // stick.
+            if ((e.flags & MACRO_FLAG_REPLACE) &&
+                (next || (e.flags & MACRO_FLAG_STICK_ALWAYS))) {
                 if (right) g_sup_rstick = true; else g_sup_lstick = true;
             }
             continue;
