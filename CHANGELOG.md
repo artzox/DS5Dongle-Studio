@@ -45,7 +45,36 @@ All notable changes to this project are documented here.
 ## [1.32.8] — 2026-08-02
 
 ### Fixed
-- **"Hide input from game" and macro button injection for L3/R3 did not hide the original input from the game.
+- **"Hide input from game" was skipped entirely unless a trigger feature was
+  also configured.** Reported as "L3 and R3 will not hide", which is how it
+  presents in practice even though the cause is not specific to those buttons.
+
+  **What was wrong.** Before sending each report the firmware decides whether
+  the report needs rewriting. That decision asked only about TRIGGER settings -
+  dead zones and two-stage modes - but the very same path is what applies macro
+  suppression, macro button injection, analog trigger passthrough and centred
+  sticks. On a profile with no trigger feature enabled, the report took the
+  untouched fast path and every macro rewrite was discarded: the macro's keys
+  were still sent, because those go out on the keyboard interface which is not
+  affected, while the original button went to the game as well. Two inputs, one
+  press.
+
+  **Why it looked specific to L3 and R3.** The defect hides nothing selectively -
+  when it triggers, no button is hidden. What differs is whether you NOTICE:
+  L3 and R3 are usually bound to sprint and melee, so an unhidden press does
+  something obvious on screen, while a stray Square or D-pad press in the same
+  test often does nothing visible at all. Two further things make it look
+  inconsistent between setups: real-time polling always rewrites the report and
+  was never affected, and trigger dead zones are per profile - so the same
+  macro row hides correctly on one profile and not on another, depending on
+  settings that have nothing to do with macros.
+
+  **The fix.** The check now also asks the macro engine whether it has anything
+  to write this tick, so the report is rewritten whenever a macro needs it
+  regardless of trigger settings or polling mode. If a button still reaches the
+  game after this, the live macro readout added in 1.32.9/1.32.10 will show
+  whether the firmware is hiding it, which separates a rule that never fired
+  from something downstream re-adding the press.
 
 ## [1.32.7] — 2026-08-02
 
