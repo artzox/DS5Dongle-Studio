@@ -56,8 +56,9 @@ All notable changes to this project are documented here.
 
   A stage re-arms when the battery climbs back above its level or the controller
   goes on charge, so a reading hovering on a boundary cannot re-announce itself.
-  Nothing fires on the first reading after a connection — the notification marks
-  a crossing, and there has not been one yet.
+  Switching a controller on reports its charge straight away: every stage it is
+  already at or below pulses in turn, so you know where you stand before you
+  start rather than when it dies mid-session.
 
   While a notification runs it takes the lightbar over, then hands it straight
   back: the colour bytes are simply left alone again, so whatever the game was

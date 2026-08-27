@@ -67,11 +67,12 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Custom Captured Effects (new in 1.14.0)](#custom-captured-effects-new-in-1140)
   - [Trigger effects — shared](#trigger-effects--shared)
   - [Gyro Aiming](#gyro-aiming)
-  - [Gyro as a mouse (new in 1.24.0)](#gyro-as-a-mouse-new-in-1240)
-  - [Flick Stick (new in 1.24.0)](#flick-stick-new-in-1240)
   - [Right Stick Inversion](#right-stick-inversion)
+  - [Gyro sensitivity: Natural or Manual (new in 1.32.0)](#gyro-sensitivity-natural-or-manual-new-in-1320)
+  - [Stick to Mouse (new in 1.30.0)](#stick-to-mouse-new-in-1300)
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
+  - [Battery notification (new in 1.35.0)](#battery-notification-new-in-1350)
   - [Advanced — BT Latency (experimental)](#advanced--bt-latency-experimental)
 - [Modes explained](#modes-explained)
 - [Notes & known behavior](#notes--known-behavior)
@@ -1611,8 +1612,9 @@ the whole configuration is applied in one command.
 ### Battery notification *(new in 1.35.0)*
 
 Pulses the **controller's lightbar** when the battery drops, as a prompt to go
-and charge. Three independent stages, each with its own level, colour and number
-of pulses — 3 amber at 50% and 10 red at 10%, say. A stage fires **once** and
+and charge — and again whenever you switch the controller on, so you always know
+what you are starting with. Three independent stages, each with its own level,
+colour and number of pulses — 3 amber at 50% and 10 red at 10%, say. A stage fires **once** and
 then stops. Nothing keeps flashing until you plug in.
 
 Each stage is a line on the **Device** tab: a tick to enable it, the level, the
@@ -1621,6 +1623,11 @@ straight away so a colour can be judged without draining a controller.
 
 > **Test uses the settings already saved to the dongle.** Save before testing,
 > or you will be looking at the previous colour and count.
+
+> To see the real thing rather than the Test button, set a stage to **100%** and
+> reconnect the controller. Any charge below that qualifies, so it fires through
+> the genuine path — the battery reading, the discharging check and the level
+> comparison — instead of the shortcut Test takes.
 
 | Setting | Range | Default | Notes |
 |---|---|---|---|
@@ -1634,13 +1641,21 @@ straight away so a colour can be judged without draining a controller.
 
 - Only while **discharging**. Charging or complete says you are already doing the
   thing the notification would ask for.
-- A stage **re-arms** when the battery climbs back above its level, or when the
-  controller goes on charge — so a reading sitting on a boundary cannot
-  re-announce itself.
-- Nothing fires on the first reading after connecting. The notification marks a
-  *crossing*, and there has not been one yet; otherwise connecting a controller
-  that is already at 20% would pulse immediately.
-- If the battery drops past two stages at once, the **lower** one is shown.
+- A stage cannot re-announce itself while the charge sits on a boundary: it
+  stays fired until the level genuinely rises again.
+- **It reports on connect.** Switch a controller on and any stage its charge is
+  already at or below fires straight away, so you know where you stand before
+  you start playing rather than finding out when it dies mid-session. This is
+  deliberate, and it is the most useful thing the feature does: the alternative
+  is silence until the battery happens to cross a line while you are holding it.
+- When more than one stage qualifies — on connect, or if the charge drops past
+  two at once — **each one pulses in turn**, so a controller connected at 20%
+  with stages at 100%, 50% and 30% plays all three. Set fewer stages, or set
+  them closer to the levels you actually care about, if that is more than you
+  want to watch.
+- Each stage fires **once**. It re-arms only when the charge climbs back above
+  it or the controller goes on charge, so nothing repeats while you keep
+  playing.
 - It **overrides everything else on the lightbar** for the few seconds it runs,
   including *Lightbar Off in Replace Mode* and whatever a game is driving in
   native mode. Being seen is the entire point. The lightbar is written back
