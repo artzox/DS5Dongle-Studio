@@ -17,7 +17,7 @@
     "auto_haptics_slope": 12,
     "auto_mute_replace": 1,
     "auto_mute_mix": 1,
-    "lightbar_off": 1,
+    "lightbar_off": 0,
     "rumble_haptic_strength": 50,
     "effect_leak_volume": 40,
     "effect_leak_sensitivity": 80,
