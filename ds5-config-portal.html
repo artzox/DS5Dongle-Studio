@@ -173,7 +173,6 @@ const SECTIONS = [
     [0x18,'auto_haptics_slope','u8','Filter Slope','select',{6:'6 dB/oct (gentle)',12:'12 dB/oct (default)',24:'24 dB/oct (steep)'}],
     [0x15,'auto_mute_replace','u8','Auto-mute Speaker (Replace)','bool'],
     [0x16,'auto_mute_mix','u8','Auto-mute Speaker (Mix)','bool'],
-    [0x19,'lightbar_off','u8','Lightbar Off in Replace Mode','bool'],
     [0x1d,'rumble_haptic_strength','u8','Converted Rumble Strength (Mix) — above 100 overdrives','number',[0,200]],
     [0x1e,'effect_leak_volume','u8','Effect Leak Volume (0=off)','number',[0,100]],
     [0x23,'effect_leak_sensitivity','u8','Effect Leak Sensitivity','number',[0,100]],
@@ -208,6 +207,7 @@ const SECTIONS = [
     [0x06,'inactive_time','u8','Inactive Time (min)','number',[5,60]],
     [0x07,'disable_inactive_disconnect','u8','Disable Inactive Disconnect','bool'],
     [0x08,'disable_pico_led','u8','Disable Pico LED','bool'],
+    [0x19,'lightbar_off','u8','Lightbar Off','bool'],
     [0x11,'enable_wake','u8','Wake PC on PS Button','bool'],
   ]},
   { title: 'Battery Notification', fields: [
@@ -339,7 +339,7 @@ const DESCRIPTIONS = {
   auto_haptics_slope: "How sharply the low-pass cuts off the unwanted higher frequencies.",
   auto_mute_replace: "Mutes the controller speaker automatically in Replace mode.",
   auto_mute_mix: "Mutes the controller speaker automatically in Mix mode.",
-  lightbar_off: "Turns the lightbar off while Replace mode is active.",
+  lightbar_off: "Keeps the controller's lightbar dark, in every haptics mode. A battery notification still overrides it for the seconds it runs.",
   rumble_haptic_strength: "Strength of a game's rumble re-created on the actuators when it can't be handed to native rumble.",
   effect_leak_volume: "How loudly sharp one-off sounds leak to the speaker while it's muted.",
   effect_leak_sensitivity: "How readily a sound counts as a sharp onset worth leaking.",
@@ -5523,7 +5523,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.35.2</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.36.0</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>

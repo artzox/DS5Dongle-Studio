@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here.
 
+## [1.36.0] — 2026-08-27
+
+### Changed
+
+- **Lightbar Off now applies in every haptics mode**, and has moved from the
+  Haptics section to **Device & Connection**. It was gated on Replace mode only
+  because that is what it was originally added for — but which haptics mode is
+  running has nothing to do with whether you want the light on, and the mode is
+  per profile anyway, so "dark in this game, lit in that one" was always a
+  matter of using two profiles.
+
+  In practice this makes audio-mix profiles behave the way they always read on
+  screen: they carry *Lightbar Off* ticked, which until now did nothing because
+  the mode was not Replace. They will now actually dim the lightbar.
+
+  The one case that changes the wrong way is a **native** profile carrying the
+  same ticked setting, where the light should stay on. `native-off.autoapply.html`
+  has been corrected; **check your own saved profiles and slots** — any native
+  profile with *Lightbar Off* ticked needs it unticked and re-saved, or the
+  lightbar will go dark in the games you least want it to. A battery
+  notification still overrides the setting for the seconds it runs.
+
 ## [1.35.2] — 2026-08-27
 
 ### Fixed
