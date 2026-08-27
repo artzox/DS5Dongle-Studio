@@ -2,6 +2,82 @@
 
 All notable changes to this project are documented here.
 
+## [1.35.2] — 2026-08-27
+
+### Fixed
+
+- **The colour stayed lit after a notification.** The controller latches
+  whatever colour it was last sent and does not revert on its own, so ceasing to
+  override left the last frame lit indefinitely — including after a Test, and
+  regardless of whether the stage or the whole feature was switched off. The
+  earlier claim that it "restores itself" was wrong: it only restored if
+  something else happened to send a report, and on an idle desktop nothing does.
+  Reports now keep going out for a short tail after the last pulse, *without*
+  the override, which actively writes the real colour back.
+
+### Changed
+
+- **It is a pulse, not a blink.** Brightness fades up and back down over about
+  1.6 seconds rather than switching hard on and off — the same gentle breath
+  DS4Windows uses for its low-battery indicator. A hard flash at this size reads
+  as a fault light rather than a prompt to charge.
+
+## [1.35.1] — 2026-08-27
+
+### Fixed
+
+- **The battery notification never reached the lightbar.** Reports to the
+  controller are only composed once the *host* has sent an output report, so on
+  an idle desktop with no game driving the controller nothing composed one at
+  all — the notification ran in the firmware and was never carried anywhere. It
+  now composes a report of its own while a notification is running. This is why
+  the Test button appeared to do nothing, and why turning *Lightbar Off in
+  Replace Mode* off changed nothing: the fault was upstream of the lightbar
+  override entirely.
+
+- The stage rows are drawn inside the **Battery Notification** card, under the
+  switch they belong to, instead of after every other card at the foot of the
+  page with the Save button in between.
+
+## [1.35.0] — 2026-08-27
+
+### Added
+
+- **Staged battery notification on the controller's lightbar.** Three stages,
+  each with its own battery level, blink count and colour — 5 amber blinks at
+  50%, 10 red at 10%, or whatever suits you. A stage fires **once** when the
+  battery falls past its level and then stops. It is a prompt to go and plug in,
+  not an indicator that flashes until you do.
+
+  Levels are in **10% steps**, because that is the resolution the DualSense
+  reports its own charge at. A blink is one second lit and one second dark, slow
+  enough to read from a sofa; the count is what you set, so 20 blinks runs for
+  about 40 seconds.
+
+  A stage re-arms when the battery climbs back above its level or the controller
+  goes on charge, so a reading hovering on a boundary cannot re-announce itself.
+  Nothing fires on the first reading after a connection — the notification marks
+  a crossing, and there has not been one yet.
+
+  While a notification runs it takes the lightbar over, then hands it straight
+  back: the colour bytes are simply left alone again, so whatever the game was
+  driving returns on the next report with nothing to restore.
+
+  Each stage is **one line** on the Device tab: a tick to enable it, the level,
+  the blink count, a **colour picker** showing the colour it will use, and a
+  **Test** button that runs that stage immediately — colours and counts are
+  impossible to judge without seeing them, and the alternative is draining a
+  controller to 20% to find out the amber is too dim. A test does not use up the
+  real notification. The dongle blinks its *saved* settings, so save first.
+
+  The per-stage tick is stored separately from the level, so turning a stage off
+  keeps the level and colour you set for when you turn it back on.
+
+  This is **additive to the Pico LED indicator**, which is unchanged and still
+  blinks continuously below 10%. The two suit different distances — the Pico LED
+  when the dongle is on the desk in front of you, the lightbar from across the
+  room — and most people will want one or the other rather than both.
+
 ## [1.34.0] — 2026-08-27
 
 ### Added

@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.34.0**
+**Version 1.35.2**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.34.0-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.35.2-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -276,7 +276,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.34.0.uf2` (Pico 2 W) or `ds5-v1.34.0-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.35.2.uf2` (Pico 2 W) or `ds5-v1.35.2-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1608,6 +1608,49 @@ the whole configuration is applied in one command.
 | Disable Pico LED | on/off | off | Turn off the Pico's onboard LED |
 | Wake PC on PS Button | on/off | off | Assert USB remote wakeup on PS press to wake the host |
 
+### Battery notification *(new in 1.35.0)*
+
+Pulses the **controller's lightbar** when the battery drops, as a prompt to go
+and charge. Three independent stages, each with its own level, colour and number
+of pulses — 3 amber at 50% and 10 red at 10%, say. A stage fires **once** and
+then stops. Nothing keeps flashing until you plug in.
+
+Each stage is a line on the **Device** tab: a tick to enable it, the level, the
+number of pulses, a colour picker, and a **Test** button that runs that stage
+straight away so a colour can be judged without draining a controller.
+
+> **Test uses the settings already saved to the dongle.** Save before testing,
+> or you will be looking at the previous colour and count.
+
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| Battery notification on the controller lightbar | on/off | off | Master switch for all three stages |
+| Stage enabled | on/off | off | Kept separate from the level, so turning a stage off does not lose the level and colour set for it |
+| Notify at battery level | 10%–100% | — | **10% steps only.** That is the resolution the DualSense reports its own charge at; a value in between is not something the controller can tell us |
+| Number of pulses | 1–20 | 5 | One pulse fades up and back down over about 1.6 s, so 10 pulses runs for roughly 16 s |
+| Colour | any | — | Chosen with a colour picker |
+
+**How it behaves**
+
+- Only while **discharging**. Charging or complete says you are already doing the
+  thing the notification would ask for.
+- A stage **re-arms** when the battery climbs back above its level, or when the
+  controller goes on charge — so a reading sitting on a boundary cannot
+  re-announce itself.
+- Nothing fires on the first reading after connecting. The notification marks a
+  *crossing*, and there has not been one yet; otherwise connecting a controller
+  that is already at 20% would pulse immediately.
+- If the battery drops past two stages at once, the **lower** one is shown.
+- It **overrides everything else on the lightbar** for the few seconds it runs,
+  including *Lightbar Off in Replace Mode* and whatever a game is driving in
+  native mode. Being seen is the entire point. The lightbar is written back
+  afterwards.
+
+**This is separate from the Pico LED**, which is unchanged and blinks
+continuously below 10%. The two suit different distances — the Pico LED when the
+dongle is on the desk in front of you, the lightbar from across the room — and
+most people will want one or the other rather than both.
+
 ### Advanced — BT Latency (experimental)
 
 | Setting | Default | Notes |
@@ -1819,9 +1862,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.34.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.34.0)
-- `ds5-v1.34.0-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.35.2.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.35.2)
+- `ds5-v1.35.2-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

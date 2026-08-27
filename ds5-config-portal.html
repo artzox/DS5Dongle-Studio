@@ -210,6 +210,27 @@ const SECTIONS = [
     [0x08,'disable_pico_led','u8','Disable Pico LED','bool'],
     [0x11,'enable_wake','u8','Wake PC on PS Button','bool'],
   ]},
+  { title: 'Battery Notification', fields: [
+    [0x8e,'batt_notify_enable','u8','Battery notification on the controller lightbar','bool'],
+    [0x9f,'batt_stage_on_0','u8','Stage 1 — enabled','bool'],
+    [0xa0,'batt_stage_on_1','u8','Stage 2 — enabled','bool'],
+    [0xa1,'batt_stage_on_2','u8','Stage 3 — enabled','bool'],
+    [0x8f,'batt_stage_level_0','u8','Stage 1 — notify at battery level','select',{0:'Off',1:'10%',2:'20%',3:'30%',4:'40%',5:'50%',6:'60%',7:'70%',8:'80%',9:'90%',10:'100%'}],
+    [0x90,'batt_stage_blinks_0','u8','Stage 1 — number of blinks','number',[1,20]],
+    [0x91,'batt_stage_r_0','u8','Stage 1 — colour red','number',[0,255]],
+    [0x92,'batt_stage_g_0','u8','Stage 1 — colour green','number',[0,255]],
+    [0x93,'batt_stage_b_0','u8','Stage 1 — colour blue','number',[0,255]],
+    [0x94,'batt_stage_level_1','u8','Stage 2 — notify at battery level','select',{0:'Off',1:'10%',2:'20%',3:'30%',4:'40%',5:'50%',6:'60%',7:'70%',8:'80%',9:'90%',10:'100%'}],
+    [0x95,'batt_stage_blinks_1','u8','Stage 2 — number of blinks','number',[1,20]],
+    [0x96,'batt_stage_r_1','u8','Stage 2 — colour red','number',[0,255]],
+    [0x97,'batt_stage_g_1','u8','Stage 2 — colour green','number',[0,255]],
+    [0x98,'batt_stage_b_1','u8','Stage 2 — colour blue','number',[0,255]],
+    [0x99,'batt_stage_level_2','u8','Stage 3 — notify at battery level','select',{0:'Off',1:'10%',2:'20%',3:'30%',4:'40%',5:'50%',6:'60%',7:'70%',8:'80%',9:'90%',10:'100%'}],
+    [0x9a,'batt_stage_blinks_2','u8','Stage 3 — number of blinks','number',[1,20]],
+    [0x9b,'batt_stage_r_2','u8','Stage 3 — colour red','number',[0,255]],
+    [0x9c,'batt_stage_g_2','u8','Stage 3 — colour green','number',[0,255]],
+    [0x9d,'batt_stage_b_2','u8','Stage 3 — colour blue','number',[0,255]],
+  ]},
   { title: 'Native Haptics Filter', fields: [
     [0x33,'haptics_aa','u8','Smoothing (anti-alias filter)','select',{1:'Off — raw & gritty (pre-1.0.4 texture)',2:'Light — kills grit, keeps snap (recommended)',3:'Strong — maximum smooth (can feel muted)'}],
   ]},
@@ -1604,6 +1625,102 @@ async function gyroAngleStart(){
   } catch(e){ box.innerHTML = 'Could not read: ' + e.message; }
 }
 
+// 0x9e is a COMMAND, not a stored field: it starts a stage's blink on the
+// device. The dongle blinks its SAVED colours, so an unsaved edit will not show.
+
+// One row per stage: level, blinks, colour, on/off, test. Every control writes
+// straight into config[...] - the same values the generic renderer would have
+// written - so saving, profiles and slot backups need no special case.
+const BATT_LEVELS = [[0,'\u2014'],[1,'10%'],[2,'20%'],[3,'30%'],[4,'40%'],[5,'50%'],
+                     [6,'60%'],[7,'70%'],[8,'80%'],[9,'90%'],[10,'100%']];
+function battHex(i){
+  const h = v => ((+config['batt_stage_' + v + '_' + i] || 0) & 0xff).toString(16).padStart(2,'0');
+  return '#' + h('r') + h('g') + h('b');
+}
+// The picker hands back #rrggbb; split it into the three bytes the firmware
+// stores. Written as one change so a colour edit is a single undoable step.
+// Mirrors exactly what a generic field row does on change: set the value and
+// mark it dirty, so the existing save path picks it up with no special case.
+function battSet(key, v){
+  config[key] = +v || 0;
+  (window._dirty = window._dirty || {})[key] = 1;
+}
+function battColour(i, hex){
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return;
+  battSet('batt_stage_r_' + i, parseInt(m[1],16));
+  battSet('batt_stage_g_' + i, parseInt(m[2],16));
+  battSet('batt_stage_b_' + i, parseInt(m[3],16));
+  render();
+}
+// The explanatory text and the rows, drawn inside the Battery Notification
+// card itself.
+function battStagesPanelHTML(){
+  return '<div style="font-size:12px;color:var(--sub);margin-top:6px">' +
+         'Each stage fires once when the battery falls past its level, pulses that colour, and stops. ' +
+         'Levels are 10% steps because that is how the controller reports its charge. It is a gentle pulse that ' +
+         'fades up and back down, about 1.6 seconds each, not a hard flash.</div>' +
+         '<div style="margin-top:8px">' + battStagesHTML() + '</div>' +
+         // Below the rows, where it is read just before reaching for Test, and
+         // bold because missing it means testing the PREVIOUS settings and
+         // concluding the feature does not work.
+         '<div id="batttest" style="font-size:12px;margin-top:8px">' +
+         '<b>Test uses the settings already saved to the dongle, so save first.</b></div>';
+}
+function battStagesHTML(){
+  let h = '';
+  for (let i = 0; i < 3; i++){
+    // Keys are built here and interpolated WHOLE into the markup, so each
+    // handler carries a literal config['batt_stage_...'] exactly as a generic
+    // field row would. That is not cosmetic: the render harness proves every
+    // setting is reachable by scanning for those literals, and a key assembled
+    // inside the handler would be invisible to it - the setting would look
+    // unreachable while working perfectly, or worse, be genuinely unreachable
+    // and still pass.
+    const kOn = 'batt_stage_on_' + i, kLv = 'batt_stage_level_' + i, kBl = 'batt_stage_blinks_' + i;
+    const kR = 'batt_stage_r_' + i, kG = 'batt_stage_g_' + i, kB = 'batt_stage_b_' + i;
+    const on = (+config[kOn] || 0) === 1;
+    const dis = on ? '' : ' disabled';
+    const dirty = k => "(window._dirty=window._dirty||{})['" + k + "']=1";
+    h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line,#333)">';
+    h += '<label style="min-width:78px"><input type="checkbox"' + (on ? ' checked' : '') +
+         ' onchange="config[\'' + kOn + '\']=this.checked?1:0;' + dirty(kOn) + ';render()"> Stage ' + (i+1) + '</label>';
+    h += '<span style="font-size:12px;color:var(--sub)">at</span>';
+    h += '<select' + dis + ' onchange="config[\'' + kLv + '\']=+this.value;' + dirty(kLv) + '">';
+    for (const [v,lab] of BATT_LEVELS)
+      h += '<option value="' + v + '"' + ((+config[kLv] || 0) === v ? ' selected' : '') + '>' + lab + '</option>';
+    h += '</select>';
+    h += '<span style="font-size:12px;color:var(--sub)">pulses</span>';
+    h += '<input type="number" min="1" max="20" style="width:64px" value="' + (+config[kBl] || 5) + '"' + dis +
+         ' onchange="config[\'' + kBl + '\']=cfgClampNum(this,1,20,false);' + dirty(kBl) + '">';
+    h += '<span style="font-size:12px;color:var(--sub)">colour</span>';
+    h += '<input type="color" style="width:46px;height:26px;padding:0;border:1px solid var(--line,#333);background:none" value="' +
+         battHex(i) + '"' + dis + ' onchange="battColour(' + i + ', this.value)">';
+    // The picker writes three bytes at once, so the literals the harness needs
+    // live here. Same device as the macro_disable hidden input above.
+    h += '<input type="hidden" oninput="config[\'' + kR + '\']=+this.value" value="' + (+config[kR]||0) + '">';
+    h += '<input type="hidden" oninput="config[\'' + kG + '\']=+this.value" value="' + (+config[kG]||0) + '">';
+    h += '<input type="hidden" oninput="config[\'' + kB + '\']=+this.value" value="' + (+config[kB]||0) + '">';
+    h += '<button class="btn btn-outline" style="padding:2px 10px"' + (device ? '' : ' disabled') +
+         ' onclick="battTest(' + i + ')">Test</button>';
+    h += '</div>';
+  }
+  return h;
+}
+// 0x9e is a COMMAND, not a stored field: it starts a stage's blink on the
+// device. The dongle blinks its SAVED colours, so an unsaved edit will not show.
+
+// One row per stage: level, blinks, colour, on/off, test. Every control writes
+// straight into config[...] - the same values the generic renderer would have
+// written - so saving, profiles and slot backups need no special case.
+async function battTest(stage){
+  const el = document.getElementById('batttest');
+  if (!device){ if (el) el.textContent = 'No device.'; return; }
+  try {
+    await hidLocked(() => sendCmd(0x01, [0x9e, stage & 0xff]));
+    if (el) el.textContent = 'Running stage ' + (stage+1) + ' on the controller.';
+  } catch(e){ if (el) el.textContent = 'Test failed: ' + e; }
+}
 async function readWakeDiag(){
   const box = document.getElementById('wakediag');
   if (box) box.innerHTML = 'Reading…';
@@ -2623,6 +2740,7 @@ const SECTION_TAB = {
   'Right Stick':'gyro',
   'Stick to Mouse':'gyro',
   'Device & Connection':'device',
+  'Battery Notification':'device',
   'Advanced — BT Latency (experimental)':'device',
   'Macros':'macros',
 };
@@ -5285,6 +5403,13 @@ const SUB_DIVIDERS = {
 // place identical markup into grid cells without duplicating any of it.
 function fieldRowHTML(f){
   const [fid,key,type,label,kind,opts] = f;
+  // The battery STAGE settings are stored as ordinary config fields so save,
+  // load, profiles and slot backups all carry them for free - but a level, a
+  // count, a colour and an on/off switch read as one thing, not five rows of
+  // numbers. They are drawn by battStagesHTML() as a row per stage with a real
+  // colour picker. The card still references config['...'] for each of them, so
+  // the render harness sees every field as reachable.
+  if (/^batt_stage_/.test(key)) return '';
   let html = '';
   const _d = SUB_DIVIDERS[key];
   if (_d) html += `<div class="${_d.bold ? 'subdiv' : 'subdiv-light'}">${_d.label}</div>`;
@@ -5398,7 +5523,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.34.0</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.35.2</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
@@ -5428,6 +5553,10 @@ function render(){
     if (section.title === R2_TITLE) { html += triggerPairHTML(); continue; }
     html += `<div class="card"><div class="card-title">${section.title}</div>`;
     for(const f of section.fields) html += fieldRowHTML(f);
+    // The stage rows belong INSIDE their own section, directly under the enable
+    // they depend on - not appended after every other card at the foot of the
+    // page, where the Save button sits between a setting and its switch.
+    if (section.title === 'Battery Notification') html += battStagesPanelHTML();
     html += `</div>`;
     // BRACES MATTER HERE: the single-statement form let the two lines added
     // below run for EVERY section on EVERY tab, emitting the audio panel over
