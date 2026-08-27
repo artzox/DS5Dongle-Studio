@@ -2,6 +2,60 @@
 
 All notable changes to this project are documented here.
 
+## [1.34.0] — 2026-08-27
+
+### Added
+
+- **Double tap** — a macro row can fire on two presses of its trigger within
+  250 ms, adapted from upstream's button-shortcut work. Tick *double tap* on a
+  button row; it is not offered on hold rows (driven by the held set) or long
+  presses (resolved by duration), and the portal clears the others if you tick
+  it.
+
+  **It costs nothing unless you use it.** A single tap can only be resolved late
+  if a double-tap row exists on the *same* trigger — until the window closes
+  there is no way to know which was meant. So the wait is applied only to a
+  trigger that has both: every other row still fires the instant the button goes
+  down, and a table with no double-tap rows behaves exactly as it did before.
+  A double-tap row on a different trigger does not slow this one down either.
+
+  A double-tap row can output a **controller or mouse button** as well as keys.
+  Those outputs are a state in the report the game reads rather than a keyboard
+  sequence, so a one-shot now presses the button for 80 ms and releases it —
+  long enough for a game polling once a frame to see it, far too short to read
+  as a deliberate hold. It layers over whatever hold rows are injecting at the
+  time, so a pulse and a held remap coexist. Before this, a one-shot row with a
+  controller output sent an empty keyboard burst and did nothing at all while
+  looking correctly configured.
+
+  Selecting a controller output still switches *hold while held* on, since a
+  remap almost always wants it — but no longer when *double tap* is already
+  ticked, which would have cleared the choice just made.
+
+## [1.33.1] — 2026-08-27
+
+### Fixed
+
+- **A held key was dropped for two reports whenever a hold macro was pressed.**
+  A hold row is driven entirely by the hold set, and a guard exists to stop one
+  also firing a one-shot burst — but the guard was applied only on the release
+  path, not when the chord is first pressed. A burst writes *only* its own keys,
+  so it overwrote everything else being held: with a stick row holding A,
+  pressing the button emitted `[dodge]`, then a blank release, then `[A, dodge]`.
+  At the instant the game saw the dodge key go down, the direction was gone, so
+  it used its default direction; the direction was back two reports later, which
+  is why every repeat after the first was correct and why a real keyboard —
+  which never releases the direction — was right every time.
+
+- **Unticking the last macro left the stick centred until a reconnect.** The
+  engine short-circuits when no macro is enabled, and that path skipped the only
+  code that clears the stick suppression, so the flag kept its last value. With
+  *centre stick always* that value is permanently on, and the firmware went on
+  centring the stick for the game until `macro_reset()` ran on reconnect.
+  Unticking *centre stick always* before disabling the macro avoided it, because
+  the flag was already clear by then. Keys held by a row that is disabled while
+  they are down are now released rather than left stuck.
+
 ## [1.33.0] — 2026-08-26
 
 ### Added

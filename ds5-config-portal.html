@@ -2956,6 +2956,8 @@ const MACRO_OFF_OUT_BTN = 17, MACRO_OFF_STICK_THRESH = 18;
 const MACRO_FLAG_LONG_PRESS = 0x01, MACRO_FLAG_HOLD = 0x02, MACRO_FLAG_REPLACE = 0x04;
 // Bit 3, mirroring MACRO_FLAG_STICK_ALWAYS in src/macro.h. Stick rows only.
 const MACRO_FLAG_STICK_ALWAYS = 0x08;
+// Bit 4, mirroring MACRO_FLAG_DOUBLE in src/macro.h.
+const MACRO_FLAG_DOUBLE = 0x10;
 const GEST_STICK = 0x20, GEST_STICK_RIGHT = 0x40;
 // Index IS the T2Button value, so order and position are load-bearing.
 // L2/R2 carry analog travel when a trigger drives them - see macro_analog_out().
@@ -4612,6 +4614,14 @@ function macroSetFlag(i, bit, on){
   if ((bit === MACRO_FLAG_REPLACE || bit === MACRO_FLAG_HOLD) && !on){
     m.flags = (m.flags|0) & ~MACRO_FLAG_STICK_ALWAYS;
   }
+  // A double tap is resolved on the SECOND press, so it cannot also be a hold
+  // (driven by the held set) or a long press (resolved by duration).
+  if ((bit === MACRO_FLAG_HOLD || bit === MACRO_FLAG_LONG_PRESS) && on){
+    m.flags = (m.flags|0) & ~MACRO_FLAG_DOUBLE;
+  }
+  if (bit === MACRO_FLAG_DOUBLE && on){
+    m.flags = (m.flags|0) & ~(MACRO_FLAG_HOLD | MACRO_FLAG_LONG_PRESS);
+  }
   macroRender();
 }
 // Output kind: keyboard or controller. Splitting this out is what lets Record and
@@ -4655,7 +4665,11 @@ function macroSetOutBtn(i, v){
   // nothing like what was asked for. Only on the way IN, and the checkbox stays
   // editable - a chord that taps a button once is still a legitimate thing to
   // build, it is just not the default reading of "map this to that".
-  if (m.out_btn !== 0 && macroCanHold(m)) m.flags = (m.flags|0) | MACRO_FLAG_HOLD;
+  // ...but NOT over an explicit double tap. That row already says how it fires,
+  // and a double tap now pulses a controller output rather than doing nothing,
+  // so forcing HOLD on would silently clear the box the user just ticked.
+  if (m.out_btn !== 0 && macroCanHold(m) && !(m.flags & MACRO_FLAG_DOUBLE))
+    m.flags = (m.flags|0) | MACRO_FLAG_HOLD;
   macroRender();
 }
 function macroSetStick(i, which){
@@ -4724,6 +4738,17 @@ function macroOptionsRowHTML(i, m, isStick, dis){
   h += '<label' + (hold ? '' : ' title="Only a held row can replace its input"') + '>' +
        '<input type="checkbox" onchange="macroSetFlag(' + i + ', MACRO_FLAG_REPLACE, this.checked)"' +
        ((m.flags & MACRO_FLAG_REPLACE) ? ' checked' : '') + (hold && !dis ? '' : ' disabled') + '> hide input from game</label>';
+  // Double tap. Only meaningful on a button row that fires a burst: a hold row
+  // is driven by the held set, and a stick direction is not tapped.
+  if (!isStick){
+    const dbl = !!(m.flags & MACRO_FLAG_DOUBLE);
+    const canDbl = !hold && !(m.flags & MACRO_FLAG_LONG_PRESS);
+    h += '<label style="margin-left:10px"' +
+         (canDbl ? ' title="Fire this row on two presses within 250ms. A single-tap row on the SAME trigger then waits for that window before firing - only that trigger is affected. A controller or mouse output is pressed briefly and released."'
+                 : ' title="Not available on a hold row or a long press"') + '>' +
+         '<input type="checkbox" onchange="macroSetFlag(' + i + ', MACRO_FLAG_DOUBLE, this.checked)"' +
+         (dbl ? ' checked' : '') + (canDbl && !dis ? '' : ' disabled') + '> double tap</label>';
+  }
   if (isStick){
     // Stick rows only, and only meaningful alongside "hide input from game".
     // Without it the stick is centred ONLY past the threshold, so at rest the
@@ -5373,7 +5398,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.33.0</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.34.0</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>

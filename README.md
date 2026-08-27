@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.33.0**
+**Version 1.34.0**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.33.0-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.34.0-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -276,7 +276,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.33.0.uf2` (Pico 2 W) or `ds5-v1.33.0-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.34.0.uf2` (Pico 2 W) or `ds5-v1.34.0-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1495,7 +1495,8 @@ A macro row does not have to send a keystroke. Two settings turn it into a remap
 | Setting | What it does |
 |---|---|
 | **hold while held** | The output is asserted while the input is held, instead of firing once. A remap needs this — without it `X → Circle` taps Circle when you *release* X. |
-| **hide input from game** | The original input is removed from the report, so the game sees only the replacement. |
+| **hide input from game** | The original input is removed from the report, so the game sees only the replacement. Only available alongside **hold while held**, and it hides the trigger for *every* row bound to it, not just its own. |
+| **double tap** *(new in 1.34.0)* | The row fires on two presses of its trigger within 250 ms. Not available on a hold row or a long press. A controller or mouse output is pressed briefly and released, since a one-shot has to hold the button down long enough for the game to sample it. |
 
 **Output** chooses where it goes:
 
@@ -1508,6 +1509,12 @@ actually do — press the controller button, or click the mouse — and Pick let
 choose by hand. Selecting a controller or mouse output turns **hold while held**
 on for you, since that is what a remap almost always means.
 
+A **double tap** costs nothing unless you use it. A single tap can only be
+resolved late if a double-tap row exists on the *same* trigger — until the window
+closes there is no way to know which was meant — so only that trigger waits.
+Every other row still fires the instant the button goes down, and a table with no
+double-tap rows behaves exactly as it did before.
+
 **Remapping one trigger onto the other stays analog.** `L2 → R2` carries the
 travel across, so a variable throttle stays variable rather than collapsing into
 an on/off switch. Any other input driving a trigger is a full press, since there
@@ -1516,6 +1523,35 @@ is no travel to copy.
 > Choosing a **mouse** output makes the dongle present a mouse to the PC, so the
 > controller re-enumerates once — but only when you **save**, never while you are
 > editing.
+
+#### One button, a single tap and a double tap, with the button hidden
+
+**hide input from game** is only offered on a row with **hold while held**,
+because suppression is a property of a held row. **double tap** is the opposite:
+it cannot be a hold row, since a held key has to go down the moment the button
+does and cannot wait to see whether a second press arrives. So the two settings
+are never available on the same row, and it looks as though a double tap cannot
+hide its trigger.
+
+It can — the hiding just does not have to come from the same row. Suppression
+applies to the **trigger**, not to one row, so any held row that names it hides
+it for every row bound to it. Give the job to a row of its own:
+
+| Row | Input | Output | hold while held | hide input from game | double tap |
+|---|---|---|---|---|---|
+| 1 | X | *(leave empty)* | ✔ | ✔ | — |
+| 2 | X | your single-tap output | — | — | — |
+| 3 | X | your double-tap output | — | — | ✔ |
+
+Row 1 has no output at all. Its only purpose is to remove X from the report
+while it is held, which covers both of the other rows. Rows 2 and 3 are one-shots,
+so the single tap is held back for the double-tap window and fires only if no
+second press arrives.
+
+Keeping rows 2 and 3 the same *kind* matters. A one-shot writes the whole
+keyboard report while it plays, so any key another row is holding is released
+for the moment it takes — a held key would blink each time the double tap fires.
+With both as one-shots there is nothing being held to interrupt.
 
 #### Sticks as an input *(new in 1.26.0)*
 
@@ -1783,9 +1819,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.33.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.33.0)
-- `ds5-v1.33.0-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.34.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.34.0)
+- `ds5-v1.34.0-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —
