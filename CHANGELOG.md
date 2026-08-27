@@ -8,16 +8,12 @@ All notable changes to this project are documented here.
 
 - **Lightbar Off now applies in every haptics mode**, and has moved from the
   Haptics section to **Device & Connection**. It was gated on Replace mode only
-  because that is what it was originally added for — but which haptics mode is
-  running has nothing to do with whether you want the light on, and the mode is
-  per profile anyway, so "dark in this game, lit in that one" was always a
-  matter of using two profiles.
-
-  In practice this makes audio-mix profiles behave the way they always read on
-  screen: they carry *Lightbar Off* ticked, which until now did nothing because
-  the mode was not Replace. They will now actually dim the lightbar.
-
-  The one case that changes the wrong way is a **native** profile carrying the
+  because that is what it was originally added for with the idea was that if you
+  use Replace mode you may not use DS4Windows which allowed for Lightbar being
+  set to black, which is why the setting applied only to this mode.
+  
+  This does set the Lightbar to off in previously saved profiles with the one case
+  that changes the wrong way is a **native** profile carrying the
   same ticked setting, where the light should stay on. `native-off.autoapply.html`
   has been corrected; **check your own saved profiles and slots** — any native
   profile with *Lightbar Off* ticked needs it unticked and re-saved, or the
