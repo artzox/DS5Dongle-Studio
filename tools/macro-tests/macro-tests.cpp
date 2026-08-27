@@ -63,6 +63,8 @@ static void touch(bool down, uint16_t x, uint16_t y) {
 }
 static void step(uint32_t dt) { g_now_ms += dt; macro_on_input(rpt, sizeof(rpt)); macro_task(); }
 static void settle()          { for (int i = 0; i < 12; i++) step(20); }
+// settle() advances 240ms, which is useless around a 250ms window.
+static void tick(uint32_t ms)  { for (uint32_t i = 0; i < ms; i += 5) step(5); }
 
 static bool last_report_blank() {
     if (g_sent_n == 0) return true;
@@ -671,6 +673,192 @@ static void t_stick_always_centres() {
        "a resting suppressed stick still marks the report as needing a rewrite");
 }
 
+
+// A HOLD row must never emit a burst. A burst calls send_state(), which writes
+// ONLY the playback buffer and so overwrites everything else held - the held
+// direction vanishes for the two reports the burst takes. The game samples its
+// movement input at the instant the dodge key arrives, finds nothing, and
+// dodges its default direction; the repeats afterwards are correct because the
+// hold set is restored by then. Asserting on the LAST report cannot see this,
+// so this walks every report emitted.
+static void t_hold_row_never_drops_the_held_set() {
+    printf("hold: pressing a hold row must not drop other held keys\n");
+    fresh_device();
+    MacroRecord st = stick_macro(false, 0, true);
+    st.entry.flags |= MACRO_FLAG_STICK_ALWAYS;
+    macro_set_entry(0, st);
+    macro_set_entry(1, hold_macro(BTN_CROSS, K_SPACE, true));
+    enable_only((1u << 0) | (1u << 1));
+
+    lstick(-100, 0); settle();
+    ok(key_down_now(K_A), "direction A is held");
+
+    const int mark = g_sent_n;
+    btn_cross(true); settle();
+
+    bool dropout = false, blank = false;
+    for (int i = mark; i < g_sent_n; i++) {
+        bool hasA = false, any = false;
+        for (int k = 0; k < 6; k++) {
+            if (g_sent[i].keys[k] == K_A) hasA = true;
+            if (g_sent[i].keys[k]) any = true;
+        }
+        if (!hasA) dropout = true;
+        if (!any && g_sent[i].mods == 0) blank = true;
+    }
+    ok(!dropout, "NO report between press and settle drops the direction");
+    ok(!blank, "and none is a full release");
+    ok(key_down_now(K_A) && key_down_now(K_SPACE), "both end up held");
+
+    // The same for a modifier output, which travels in the mods byte.
+    fresh_device();
+    macro_set_entry(0, st);
+    macro_set_entry(1, hold_macro(BTN_CROSS, 0xE1, true));   // LShift
+    enable_only((1u << 0) | (1u << 1));
+    lstick(-100, 0); settle();
+    const int mark2 = g_sent_n;
+    btn_cross(true); settle();
+    bool drop2 = false;
+    for (int i = mark2; i < g_sent_n; i++) {
+        bool hasA = false;
+        for (int k = 0; k < 6; k++) if (g_sent[i].keys[k] == K_A) hasA = true;
+        if (!hasA) drop2 = true;
+    }
+    ok(!drop2, "a modifier output does not drop the direction either");
+}
+
+// Disabling every macro must not leave suppression latched.
+static void t_disabling_all_macros_frees_the_stick() {
+    printf("stick: disabling the last macro must release the stick\n");
+    fresh_device();
+    MacroRecord st = stick_macro(false, 0, true);
+    st.entry.flags |= MACRO_FLAG_STICK_ALWAYS;
+    macro_set_entry(0, st);
+    enable_only(1u << 0);
+    lstick(0, 0); settle();
+    ok(macro_suppress_stick(false), "centre-always suppresses at rest while enabled");
+
+    // Untick the macro. The engine short-circuits from here on.
+    g_cfg.macro_disable = MACRO_NONE_ENABLED;
+    settle();
+    ok(!macro_suppress_stick(false), "disabling it releases the stick immediately");
+    ok(!macro_report_active(), "and the report no longer needs rewriting");
+
+    // Keys held by a row disabled mid-press must be released, not forgotten.
+    fresh_device();
+    macro_set_entry(0, hold_macro(BTN_CROSS, K_SPACE, true));
+    enable_only(1u << 0);
+    btn_cross(true); settle();
+    ok(key_down_now(K_SPACE), "Space held");
+    g_cfg.macro_disable = MACRO_NONE_ENABLED;
+    settle();
+    ok(!key_down_now(K_SPACE), "disabling the row releases the key, it does not stick");
+}
+
+
+// Double tap, and the promise that it costs nothing unless used.
+static void t_double_tap() {
+    printf("double tap: fires on two presses, and only defers when it must\n");
+    fresh_device();
+    MacroRecord single = hold_macro(BTN_CROSS, K_SPACE, false);
+    single.entry.flags = 0;                       // plain single-tap burst row
+    MacroRecord dbl = hold_macro(BTN_CROSS, K_J, false);
+    dbl.entry.flags = MACRO_FLAG_DOUBLE;
+    macro_set_entry(0, single);
+    macro_set_entry(1, dbl);
+    enable_only((1u << 0) | (1u << 1));
+
+    // Two quick presses -> the DOUBLE row, and the single must not also fire.
+    btn_cross(true); tick(60); btn_cross(false); tick(60);
+    btn_cross(true); tick(60); btn_cross(false); tick(60);
+    ok(saw_key(0, K_J), "two quick presses fire the double row");
+    ok(!saw_key(0, K_SPACE), "and the single row does NOT also fire");
+
+    // One press, then wait out the window -> the SINGLE row, late but correct.
+    fresh_device();
+    macro_set_entry(0, single); macro_set_entry(1, dbl);
+    enable_only((1u << 0) | (1u << 1));
+    btn_cross(true); tick(60); btn_cross(false); tick(60);
+    ok(!saw_key(0, K_SPACE), "a lone tap does not fire immediately while a double row exists");
+    g_now_ms += MACRO_DOUBLE_MS + 40; macro_task();
+    ok(saw_key(0, K_SPACE), "...it fires once the window closes");
+    ok(!saw_key(0, K_J), "and the double row does not fire");
+
+    // Too slow to be a double -> two separate singles.
+    fresh_device();
+    macro_set_entry(0, single); macro_set_entry(1, dbl);
+    enable_only((1u << 0) | (1u << 1));
+    btn_cross(true); tick(60); btn_cross(false); tick(60);
+    g_now_ms += MACRO_DOUBLE_MS + 60; macro_task();
+    btn_cross(true); tick(60); btn_cross(false); tick(60);
+    g_now_ms += MACRO_DOUBLE_MS + 60; macro_task();
+    ok(!saw_key(0, K_J), "presses outside the window are not a double");
+
+    // THE LATENCY PROMISE: with no double row on the chord, a tap still fires
+    // on press with nothing deferred.
+    fresh_device();
+    macro_set_entry(0, single);
+    enable_only(1u << 0);
+    btn_cross(true); tick(15);
+    ok(saw_key(0, K_SPACE), "with no double row the single fires IMMEDIATELY on press");
+
+    // A double row on a DIFFERENT chord must not slow this one down.
+    fresh_device();
+    MacroRecord other = hold_macro(BTN_R3, K_J, false);
+    other.entry.flags = MACRO_FLAG_DOUBLE;
+    macro_set_entry(0, single);
+    macro_set_entry(1, other);
+    enable_only((1u << 0) | (1u << 1));
+    btn_cross(true); tick(15);
+    ok(saw_key(0, K_SPACE), "a double row on another chord adds no latency here");
+}
+
+
+// A one-shot whose output is a CONTROLLER button. Before the pulse, fire() sent
+// this through the keyboard playback path, which has no notion of out_btn - so
+// the row did nothing at all while looking correctly configured.
+static void t_oneshot_controller_output_pulses() {
+    printf("one-shot: a controller-button output is injected as a timed pulse\n");
+    fresh_device();
+    MacroRecord dbl = hold_macro(BTN_CROSS, 0, false);
+    dbl.entry.flags   = MACRO_FLAG_DOUBLE;
+    dbl.entry.out_btn = T2BTN_TRIANGLE;
+    macro_set_entry(0, dbl);
+    enable_only(1u << 0);
+
+    ok(macro_inject_mask() == 0, "nothing injected at rest");
+    btn_cross(true); tick(60); btn_cross(false); tick(60);
+    ok(macro_inject_mask() == 0, "one tap injects nothing");
+    btn_cross(true); tick(20);
+    const uint32_t inj = macro_inject_mask();
+    ok(inj == (1u << (T2BTN_TRIANGLE - 1)), "the double tap injects Triangle");
+    ok(macro_report_active(), "and the report is marked as needing a rewrite");
+
+    // It must let go on its own.
+    g_now_ms += MACRO_PULSE_MS + 40;
+    macro_on_input(rpt, sizeof(rpt)); macro_task();
+    ok(macro_inject_mask() == 0, "the pulse releases itself after MACRO_PULSE_MS");
+
+    // A pulse must not wipe what a HOLD row is injecting at the same time.
+    fresh_device();
+    MacroRecord held = hold_macro(BTN_R3, 0, false);
+    held.entry.flags   = MACRO_FLAG_HOLD;
+    held.entry.out_btn = T2BTN_CIRCLE;
+    macro_set_entry(0, dbl);
+    macro_set_entry(1, held);
+    enable_only((1u << 0) | (1u << 1));
+    // Order matters: only ONE chord is armed at a time, so a chord cannot be
+    // formed while another is already held. Start the pulse first, then engage
+    // the hold row inside the pulse window - which is the case that actually
+    // tests layering.
+    btn_cross(true); tick(60); btn_cross(false); tick(60); btn_cross(true); tick(10);
+    ok((macro_inject_mask() & (1u << (T2BTN_TRIANGLE - 1))) != 0, "double tap pulses Triangle");
+    btn_r3(true); tick(10);
+    const uint32_t both = macro_inject_mask();
+    ok((both & (1u << (T2BTN_TRIANGLE - 1))) != 0, "the pulse survives a hold row engaging");
+    ok((both & (1u << (T2BTN_CIRCLE - 1))) != 0, "and the hold row's Circle is injected too");
+}
+
 static void t_stick_hysteresis() {
     printf("stick: resting on the threshold must not chatter\n");
     fresh_device();
@@ -728,6 +916,10 @@ int main() {
     t_mouse_outputs();
     t_stick_to_keys();
     t_stick_always_centres();
+    t_hold_row_never_drops_the_held_set();
+    t_disabling_all_macros_frees_the_stick();
+    t_double_tap();
+    t_oneshot_controller_output_pulses();
     t_stick_hysteresis();
     t_hold_released_on_suspend();
     t_disabled_hold_row_is_inert();
