@@ -7,18 +7,23 @@ All notable changes to this project are documented here.
 ### Changed
 
 - **Lightbar Off now applies in every haptics mode**, and has moved from the
-  Haptics section to **Device & Connection**. It was gated on Replace mode only
-  because that is what it was originally added for with the idea was that if you
-  use Replace mode you may not use DS4Windows which allowed for Lightbar being
-  set to black, which is why the setting applied only to this mode.
-  
-  This does set the Lightbar to off in previously saved profiles with the one case
-  that changes this wrong way is a **native** profile carrying the
-  same ticked setting, where the light should stay on.
-  `native-off.autoapply.html` has been corrected; **check your own saved
-  profiles and slots** — any native profile with *Lightbar Off* ticked needs
-  it unticked and re-saved, or the lightbar will go dark in the games you least
-  want it to. A battery notification still overrides the setting for the seconds it runs.
+  Haptics section to **Device & Connection**. It was gated on Replace mode for a
+  reason: if you are using Replace you are probably not running DS4Windows, which
+  is what would otherwise let you set the lightbar to black. Outside Replace the
+  assumption was that DS4Windows already had it covered.
+
+  That assumption no longer holds for everyone, and which haptics mode is running
+  has nothing to do with whether you want the light on.
+
+  **This turns the lightbar off in previously saved profiles that had the setting
+  ticked**, which for an audio-mix profile is what the setting always said it
+  would do. The case that changes the wrong way is a **native** profile carrying
+  the same ticked setting, where the light should stay on.
+  `native-off.autoapply.html` has been corrected; **check your own saved profiles
+  and slots** — any native profile with *Lightbar Off* ticked needs it unticked
+  and re-saved, or the lightbar will go dark in the games you least want it to.
+
+  A battery notification still overrides the setting for the seconds it runs.
 
 ## [1.35.2] — 2026-08-27
 
