@@ -72,6 +72,19 @@ static uint32_t g_off_since[32] = {0};   // per-bit fall time, 0 = not falling
 static uint32_t g_chord        = 0;      // armed chord value, 0 = none
 static uint32_t g_chord_start  = 0;
 static bool     g_chord_fired  = false;  // long fired, or short fired on press
+// Double-tap state. g_tap_chord/g_tap_ms remember the last press so a second
+// one can be recognised; g_pending_idx is a single-tap row whose firing is
+// waiting for the double window to close (-1 = nothing waiting).
+static uint32_t g_tap_chord    = 0;
+static uint32_t g_tap_ms       = 0;
+static int      g_pending_idx  = -1;
+static uint32_t g_pending_ms   = 0;
+// A one-shot that outputs a CONTROLLER or MOUSE button holds it down for
+// MACRO_PULSE_MS. g_inject and g_mouse_btns are rebuilt from scratch every
+// report by hold_task(), so a burst cannot simply set them once - the next
+// report would wipe it. The pulse is re-applied each tick until it expires.
+static uint8_t  g_pulse_btn    = 0;
+static uint32_t g_pulse_until  = 0;
 
 // Touch tracking
 static bool     g_touch_down = false;
@@ -442,12 +455,16 @@ static inline uint8_t popcount32(uint32_t v) {
     return n;
 }
 
-static int find_entry(uint32_t chord, bool want_long, uint32_t disable) {
+// want_double defaults to false, so every existing caller keeps meaning "a row
+// that fires on a SINGLE tap" and a double row can never be picked up by the
+// single-tap paths.
+static int find_entry(uint32_t chord, bool want_long, uint32_t disable, bool want_double = false) {
     for (uint8_t i = 0; i < MACRO_COUNT; i++) {
         const MacroEntry &e = g_table.rec[i].entry;
         if (e.gesture != GESTURE_NONE || e.chord != chord || e.chord == 0) continue;
         if (!macro_is_enabled(disable, i)) continue;
         if (((e.flags & MACRO_FLAG_LONG_PRESS) != 0) != want_long) continue;
+        if (((e.flags & MACRO_FLAG_DOUBLE) != 0) != want_double) continue;
         return i;
     }
     return -1;
@@ -626,6 +643,21 @@ static void hold_task(const uint8_t *r, uint16_t len, uint32_t mask, uint32_t di
         if (e.flags & MACRO_FLAG_REPLACE) g_suppress |= e.chord;
     }
 
+    // A live pulse is layered on top of whatever the held rows produced, so a
+    // double tap can inject Triangle while other rows still hold their own
+    // buttons. Applied AFTER the loop because the loop zeroes these each tick.
+    if (g_pulse_btn != 0) {
+        if ((int32_t) (now_ms() - g_pulse_until) >= 0) {
+            g_pulse_btn = 0;
+        } else if (macro_is_mouse_out(g_pulse_btn)) {
+            if (g_pulse_btn <= MOUT_MIDDLE) g_mouse_btns |= (uint8_t) (1u << (g_pulse_btn - MOUT_LEFT));
+        } else {
+            g_inject |= (1u << (g_pulse_btn - 1));
+            if (g_pulse_btn == T2BTN_L2)      g_analog_l2 = 255;
+            else if (g_pulse_btn == T2BTN_R2) g_analog_r2 = 255;
+        }
+    }
+
     if (g_hold_n != g_hold_sent_n || memcmp(g_hold_keys, g_hold_sent, g_hold_n) != 0) {
         g_hold_pending = true;
     }
@@ -644,8 +676,19 @@ static void hold_flush() {
 }
 
 static void fire(int idx) {
-    if (idx < 0 || g_suspended || g_pb_busy) return;
-    playback_start(g_table.rec[idx].entry);
+    if (idx < 0 || g_suspended) return;
+    const MacroEntry &e = g_table.rec[idx].entry;
+    // A controller or mouse button output is a report STATE, not a keyboard
+    // sequence, so it cannot travel through playback at all - that path only
+    // writes the keyboard interface. Before this, a one-shot row with such an
+    // output fired an empty burst and did nothing at all.
+    if (e.out_btn != 0) {
+        g_pulse_btn   = e.out_btn;
+        g_pulse_until = now_ms() + MACRO_PULSE_MS;
+        return;
+    }
+    if (g_pb_busy) return;
+    playback_start(e);
 }
 
 static uint32_t hold_ms_of(int idx) {
@@ -976,7 +1019,34 @@ void macro_on_input(const uint8_t *report, uint16_t len) {
     if (!g_loaded) macro_load();
 
     const uint32_t disable = get_config().macro_disable;
-    if (!macro_any_enabled(disable)) { g_chord = 0; g_stable = 0; return; }
+    if (!macro_any_enabled(disable)) {
+        g_chord = 0; g_stable = 0;
+        // hold_task() is the ONLY thing that clears these, and this return
+        // skips it - so whatever the last enabled tick left behind stayed set
+        // forever. Harmless while stick suppression only lasted as long as a
+        // deflection (you cannot disable a macro mid-push), but MACRO_FLAG_
+        // STICK_ALWAYS holds it true permanently: unticking the last macro
+        // froze the flag on and main.cpp kept centring the stick until a
+        // reconnect ran macro_reset(). Unticking "centre stick always" first
+        // avoided it because the flag was already false by then.
+        g_suppress   = 0;
+        g_inject     = 0;
+        g_sup_lstick = false;
+        g_sup_rstick = false;
+        g_analog_l2  = 0;
+        g_analog_r2  = 0;
+        g_mouse_btns = 0;
+        // A row disabled while its keys were down must RELEASE them, not just
+        // stop refreshing them, or they stick at the host. Pending is raised
+        // only when the set actually changes, so this does not send a report
+        // on every input while macros are off.
+        g_hold_n = 0;
+        if (g_hold_sent_n != 0) g_hold_pending = true;
+        g_tap_chord = 0;
+        g_pending_idx = -1;
+        g_pulse_btn = 0;
+        return;
+    }
 
     // Every wake rule applies: nothing may transmit while the host is
     // suspended, and nothing may be left latched when it goes down.
@@ -1034,6 +1104,21 @@ void macro_on_input(const uint8_t *report, uint16_t len) {
     const uint32_t chord = best_chord(mask, disable);
     if (chord == 0) return;
 
+    // DOUBLE TAP. A second press of the same chord inside the window fires the
+    // double row and cancels any single that was waiting on it.
+    const int dbl_idx = find_entry(chord, false, disable, true);
+    if (dbl_idx >= 0 && g_tap_chord == chord && (now - g_tap_ms) <= MACRO_DOUBLE_MS) {
+        g_pending_idx = -1;              // the first tap was not a single after all
+        g_tap_chord   = 0;
+        fire(dbl_idx);
+        g_chord       = chord;
+        g_chord_start = now;
+        g_chord_fired = true;            // nothing else may fire for this press
+        return;
+    }
+    g_tap_chord = chord;
+    g_tap_ms    = now;
+
     g_chord       = chord;
     g_chord_start = now;
     g_chord_fired = false;
@@ -1041,14 +1126,48 @@ void macro_on_input(const uint8_t *report, uint16_t len) {
     // With no long macro on this chord there is nothing to wait for, so fire on
     // PRESS. Waiting for the release would add avoidable latency.
     if (find_entry(chord, true, disable) < 0) {
-        const int short_idx = find_entry(chord, false, disable);
-        if (short_idx >= 0) { fire(short_idx); g_chord_fired = true; }
+        const int short_idx_r = find_entry(chord, false, disable);
+        // A HOLD row is driven entirely by hold_task() and must NEVER fire a
+        // burst - the same guard the release path above applies, which this
+        // path was missing. A burst calls send_state(), and send_state() writes
+        // ONLY the playback buffer, so it overwrites the held set: with a stick
+        // row holding A, pressing a hold-row button emitted [dodge], then a
+        // blank, then [A, dodge]. At the instant the game saw the dodge key go
+        // down the direction was gone, so it dodged its default direction; two
+        // reports later A was back, which is why every repeat after the first
+        // was correct. A real keyboard never releases the direction, hence
+        // "works on keyboard, fails on the dongle".
+        const int short_idx = (short_idx_r >= 0 && macro_is_hold(g_table.rec[short_idx_r].entry))
+                                ? -1 : short_idx_r;
+        if (short_idx >= 0) {
+            // THE LATENCY RULE. Defer the single ONLY when a double row shares
+            // this chord - otherwise there is nothing to disambiguate and the
+            // tap fires immediately, exactly as before. So a table with no
+            // double rows behaves identically to one that never had the
+            // feature, and the cost is paid only on the chord that opted in.
+            if (dbl_idx >= 0) {
+                g_pending_idx = short_idx;
+                g_pending_ms  = now;
+                g_chord_fired = true;    // the deferred fire owns this press
+            } else {
+                fire(short_idx);
+                g_chord_fired = true;
+            }
+        }
     }
 }
 
 void macro_task() {
     hold_flush();
     if (wake_host_is_suspended()) return;
+    // A deferred single tap fires once the double window closes with no second
+    // press. Driven from here, not from the input path, so it still fires when
+    // the user lets go and the pad falls quiet.
+    if (g_pending_idx >= 0 && (now_ms() - g_pending_ms) > MACRO_DOUBLE_MS) {
+        const int idx = g_pending_idx;
+        g_pending_idx = -1;
+        if (!wake_owns_keyboard()) fire(idx);
+    }
     // The wake FSM owns the shared keyboard instance from the moment it asks for
     // a resume until its F15 keyup has gone out. That sequence straddles the
     // resume, so host_suspended is already false for most of it - and wake is
@@ -1077,6 +1196,10 @@ void macro_reset() {
     g_suppress = g_inject = 0;
     apply_pad_half(0);   // drop any frozen click half
     g_sup_lstick = g_sup_rstick = false;
+    g_tap_chord = 0;
+    g_tap_ms    = 0;
+    g_pending_idx = -1;
+    g_pulse_btn   = 0;
     memset(g_stick_latch, 0, sizeof(g_stick_latch));
     // Mouse output has to be dropped for the same reason as the keys: a click
     // still held at a suspend stays latched at the host, and a pending scroll

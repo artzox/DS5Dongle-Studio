@@ -166,6 +166,19 @@ constexpr uint16_t MACRO_MOTION_STEP_DEFAULT = 1800;
 // motion gestures can happen, because the axes never compete.
 constexpr uint8_t MACRO_STICK_UP = 0, MACRO_STICK_RIGHT = 1,
                   MACRO_STICK_DOWN = 2, MACRO_STICK_LEFT = 3;
+// Two presses closer together than this count as a double tap. Also the longest
+// a single tap can be delayed, and only ever on a chord that has a double row.
+constexpr uint32_t MACRO_DOUBLE_MS = 250;
+
+// How long a one-shot injects a CONTROLLER BUTTON or MOUSE BUTTON for.
+//
+// Keyboard output is a sequence the host queues, but a controller button is a
+// STATE in the report the game reads - a one-shot has to hold it down for long
+// enough to be sampled. Games poll their input once a frame, so this has to
+// cover several frames at 60Hz to be seen reliably; 80ms is about five, and
+// still far too short to read as a deliberate hold.
+constexpr uint32_t MACRO_PULSE_MS = 80;
+
 constexpr uint8_t MACRO_STICK_THRESH = 48;   // deflection from centre, of 127
 constexpr uint8_t MACRO_STICK_HYST   = 10;   // release margin, same units
 
@@ -198,6 +211,16 @@ enum : uint8_t {
     // saved before this flag existed has the bit clear, so upgrades keep
     // behaving exactly as they did.
     MACRO_FLAG_STICK_ALWAYS = 1u << 3,
+    // DOUBLE fires this row on a DOUBLE TAP: two presses of the same chord
+    // within MACRO_DOUBLE_MS of each other.
+    //
+    // It is opt-in per row, and that is what keeps it free. A single-tap row
+    // can only be resolved late if a double-tap row exists on the SAME chord -
+    // until the window closes you cannot know which the user meant. So the
+    // deferral is applied only when such a row is present: with no double row
+    // on the chord, a single tap still fires on press exactly as before, with
+    // no added latency anywhere in the table.
+    MACRO_FLAG_DOUBLE = 1u << 4,
 };
 
 // Default long-press threshold, centiseconds. 750 ms, matching ps_shortcut.
