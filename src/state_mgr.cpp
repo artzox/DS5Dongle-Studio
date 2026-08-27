@@ -15,6 +15,7 @@
 #include "pico.h"
 #include "pico/time.h"
 #include "config.h"
+#include "battery_notify.h"
 #include "utils.h"
 
 namespace {
@@ -188,6 +189,25 @@ void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
         data[44] = 0x00;   // LedRed
         data[45] = 0x00;   // LedGreen
         data[46] = 0x00;   // LedBlue
+    }
+    // Battery notification. Last, so it wins over the lightbar_off override for
+    // the few seconds it runs - the whole point is that it is seen.
+    //
+    // It restores itself: while a blink is running these bytes are overwritten
+    // on every outgoing report, and the moment it ends they are simply left
+    // alone again, so whatever the game was driving flows straight back. There
+    // is no saved colour to put back and nothing to get out of step.
+    // Applied LAST, so it wins over the lightbar_off override above and over
+    // whatever the game asked for - for the few seconds it runs, being seen is
+    // the entire point. During the restore tail this returns false and the
+    // report carries the real colour again, which is what puts the lightbar
+    // back.
+    uint8_t bn_r = 0, bn_g = 0, bn_b = 0;
+    if (size > 46 && battery_notify_override(bn_r, bn_g, bn_b)) {
+        data[1] |= 0x04;                  // AllowLedColor
+        data[44] = bn_r;
+        data[45] = bn_g;
+        data[46] = bn_b;
     }
 }
 

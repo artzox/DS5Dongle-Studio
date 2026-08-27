@@ -25,6 +25,7 @@
 #include "pico/stdio_usb.h"
 #endif
 #include "config.h"
+#include "battery_notify.h"
 #include "cmd.h"
 #include "dse.h"
 #if ENABLE_BATT_LED
@@ -1194,7 +1195,14 @@ int main() {
             if (!wake_host_is_suspended() &&
                 now - last_synth_tick_ms >= state_synth_interval_ms()) {
                 last_synth_tick_ms = now;
-                if (state_synth_tick()) {
+                // ...or when a battery notification is running. state_synth_tick()
+                // returns false until the HOST has sent an output report, so on an
+                // idle desktop with no game driving the controller nothing ever
+                // composed a report - the notification fired in firmware and never
+                // reached the lightbar. state_set() builds from the state module's
+                // own struct, not from the host cache, so it is safe to compose
+                // one for this alone.
+                if (state_synth_tick() || battery_notify_wants_report()) {
                     uint8_t outputData[78]{};
                     outputData[0] = 0x31;
                     outputData[1] = reportSeqCounter << 4;
@@ -1220,6 +1228,11 @@ int main() {
 #if ENABLE_BATT_LED
         battery_led_tick();
 #endif
+        // Lightbar notification. Deliberately OUTSIDE ENABLE_BATT_LED: that flag
+        // governs the Pico's onboard LED, and this drives the controller's
+        // lightbar. They are separate indicators for separate distances and
+        // either may be used without the other.
+        battery_notify_tick();
         button_check();
         bt_inquiring_led();
         dse_task();

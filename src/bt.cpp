@@ -17,6 +17,7 @@
 #include "bsp/board_api.h"
 #include "classic/sdp_server.h"
 #include "config.h"
+#include "battery_notify.h"
 #include "usb.h"
 #include "state_mgr.h"
 #include "dse.h"
@@ -670,6 +671,10 @@ static void __not_in_flash_func(hci_packet_handler)(uint8_t packet_type, uint16_
 #if ENABLE_BATT_LED
             battery_led_on_disconnect();
 #endif
+            // Outside the flag for the same reason as its tick: the lightbar
+            // notification is not the Pico LED. Without this a stage that fired
+            // on the last connection would stay marked as fired and stay quiet.
+            battery_notify_on_disconnect();
             printf("[HCI] Disconnected reason=0x%02X\n", reason);
             // gap_inquiry_start(30);
             // bt_inquiring = true;

@@ -138,6 +138,16 @@ void config_valid() {
     if (body->auto_haptics_slope != 6 && body->auto_haptics_slope != 12 && body->auto_haptics_slope != 24) body->auto_haptics_slope = 12;
     if (body->lightbar_off > 1) body->lightbar_off = 0;
     if (body->auto_haptics_smooth > 100) body->auto_haptics_smooth = 40;
+    // Staged battery notification. An upgraded config arrives with this tail
+    // 0xFF-filled, so every value has to be clamped into range rather than
+    // trusted - 0xFF blinks would flash for eight minutes.
+    if (body->batt_notify_enable > 1) body->batt_notify_enable = 0;
+    for (int i = 0; i < 3; i++) {
+        if (body->batt_stage_level[i] > 10)  body->batt_stage_level[i] = 0;   // 0 = stage off
+        if (body->batt_stage_blinks[i] > 20) body->batt_stage_blinks[i] = 5;
+        if (body->batt_stage_blinks[i] == 0) body->batt_stage_blinks[i] = 5;
+        if (body->batt_stage_on[i] > 1) body->batt_stage_on[i] = 0;
+    }
     if (body->bt_flush_timeout > 0x07FF) body->bt_flush_timeout = 0; // 0=off, max per BT spec
     if (body->bt_qos_latency_us > 50000) body->bt_qos_latency_us = 0; // 0=off
     if (body->rumble_haptic_strength > 200) body->rumble_haptic_strength = 50; // >100 = deliberate overdrive

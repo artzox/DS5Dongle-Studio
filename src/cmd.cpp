@@ -36,8 +36,8 @@ static bool read_config_value(T &value, uint8_t const *buffer, uint16_t bufsize)
 // Firmware version, reported via read-only fields 0x7D/0x7E/0x7F so the portal
 // can display which build is flashed. Bump on every released build.
 constexpr uint8_t FW_VER_MAJOR = 1;
-constexpr uint8_t FW_VER_MINOR = 34;
-constexpr uint8_t FW_VER_PATCH = 0;
+constexpr uint8_t FW_VER_MINOR = 35;
+constexpr uint8_t FW_VER_PATCH = 2;
 
 // Width of the value the LAST successful write_config_value() emitted. The bulk
 // reader (0x0c) needs a length per field and used to carry its own hand-written
@@ -233,6 +233,29 @@ static bool set_field_in(Config_body &new_config, uint8_t field_id, uint8_t cons
         case 0x7a: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.stick_mouse_invert=v; break; }
         case 0x66: { uint16_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.stick_mouse_sens_y=v; break; }
         case 0x80: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_sens_mode=v; break; }
+        case 0x8e: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_notify_enable=v; break; }
+        case 0x9f: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_on[0]=v; break; }
+        case 0xa0: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_on[1]=v; break; }
+        case 0xa1: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_on[2]=v; break; }
+        // 0x9e is a COMMAND, not a stored field: run a stage's blink now so the
+        // colour and count can be judged without draining a controller.
+        case 0x9e: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false;
+                     extern void battery_notify_test(uint8_t); battery_notify_test(v); break; }
+        case 0x8f: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_level[0]=v; break; }
+        case 0x90: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_blinks[0]=v; break; }
+        case 0x91: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_r[0]=v; break; }
+        case 0x92: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_g[0]=v; break; }
+        case 0x93: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_b[0]=v; break; }
+        case 0x94: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_level[1]=v; break; }
+        case 0x95: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_blinks[1]=v; break; }
+        case 0x96: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_r[1]=v; break; }
+        case 0x97: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_g[1]=v; break; }
+        case 0x98: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_b[1]=v; break; }
+        case 0x99: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_level[2]=v; break; }
+        case 0x9a: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_blinks[2]=v; break; }
+        case 0x9b: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_r[2]=v; break; }
+        case 0x9c: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_g[2]=v; break; }
+        case 0x9d: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_b[2]=v; break; }
         case 0x81: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_natural_x10=v; break; }
         case 0x82: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_natural_y_x10=v; break; }
         case 0x84: { uint16_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_scale_trim_x100=v; break; }
@@ -348,6 +371,25 @@ static bool get_config_field_from(const Config_body &config, uint8_t field_id, u
         // continue at 0x80 - the collision the compiler caught here was these
         // three landing on existing diagnostics.
         case 0x80: return write_config_value(buffer, bufsize, config.gyro_sens_mode);
+        case 0x8e: return write_config_value(buffer, bufsize, config.batt_notify_enable);
+        case 0x9f: return write_config_value(buffer, bufsize, config.batt_stage_on[0]);
+        case 0xa0: return write_config_value(buffer, bufsize, config.batt_stage_on[1]);
+        case 0xa1: return write_config_value(buffer, bufsize, config.batt_stage_on[2]);
+        case 0x8f: return write_config_value(buffer, bufsize, config.batt_stage_level[0]);
+        case 0x90: return write_config_value(buffer, bufsize, config.batt_stage_blinks[0]);
+        case 0x91: return write_config_value(buffer, bufsize, config.batt_stage_r[0]);
+        case 0x92: return write_config_value(buffer, bufsize, config.batt_stage_g[0]);
+        case 0x93: return write_config_value(buffer, bufsize, config.batt_stage_b[0]);
+        case 0x94: return write_config_value(buffer, bufsize, config.batt_stage_level[1]);
+        case 0x95: return write_config_value(buffer, bufsize, config.batt_stage_blinks[1]);
+        case 0x96: return write_config_value(buffer, bufsize, config.batt_stage_r[1]);
+        case 0x97: return write_config_value(buffer, bufsize, config.batt_stage_g[1]);
+        case 0x98: return write_config_value(buffer, bufsize, config.batt_stage_b[1]);
+        case 0x99: return write_config_value(buffer, bufsize, config.batt_stage_level[2]);
+        case 0x9a: return write_config_value(buffer, bufsize, config.batt_stage_blinks[2]);
+        case 0x9b: return write_config_value(buffer, bufsize, config.batt_stage_r[2]);
+        case 0x9c: return write_config_value(buffer, bufsize, config.batt_stage_g[2]);
+        case 0x9d: return write_config_value(buffer, bufsize, config.batt_stage_b[2]);
         case 0x81: return write_config_value(buffer, bufsize, config.gyro_natural_x10);
         case 0x82: return write_config_value(buffer, bufsize, config.gyro_natural_y_x10);
         case 0x84: return write_config_value(buffer, bufsize, config.gyro_scale_trim_x100);

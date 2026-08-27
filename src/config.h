@@ -336,6 +336,24 @@ struct __attribute__((packed)) Config_body {
     // angle check in the portal measures the error and this corrects it, so
     // 1.0x is genuinely 1:1 rather than nominally.
     uint16_t gyro_scale_trim_x100;
+    // ---- Staged battery notification (appended 1.35.0) ----
+    // Three independent stages. Each fires ONCE when the battery falls past its
+    // level while discharging, blinks the controller's lightbar in its colour,
+    // and then hands the lightbar back. It is a prompt to go and plug in, not a
+    // running indicator - nothing keeps flashing until you do.
+    //
+    // The level is the DualSense's own PowerPercent nibble, 0-10, i.e. 10%
+    // steps. It cannot be finer: that is the resolution the controller reports.
+    // 0 disables the stage.
+    uint8_t  batt_notify_enable;      // master on/off
+    uint8_t  batt_stage_level[3];     // 1-10 = 10%-100%, 0 = stage off
+    uint8_t  batt_stage_blinks[3];    // 1-20 blinks
+    uint8_t  batt_stage_r[3];
+    uint8_t  batt_stage_g[3];
+    uint8_t  batt_stage_b[3];
+    // Per-stage on/off, kept SEPARATE from the level so unticking a stage does
+    // not throw away the level and colour it was set to.
+    uint8_t  batt_stage_on[3];
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so
