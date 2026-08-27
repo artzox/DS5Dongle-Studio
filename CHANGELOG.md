@@ -13,12 +13,12 @@ All notable changes to this project are documented here.
   set to black, which is why the setting applied only to this mode.
   
   This does set the Lightbar to off in previously saved profiles with the one case
-  that changes the wrong way is a **native** profile carrying the
-  same ticked setting, where the light should stay on. `native-off.autoapply.html`
-  has been corrected; **check your own saved profiles and slots** — any native
-  profile with *Lightbar Off* ticked needs it unticked and re-saved, or the
-  lightbar will go dark in the games you least want it to. A battery
-  notification still overrides the setting for the seconds it runs.
+  that changes this wrong way is a **native** profile carrying the
+  same ticked setting, where the light should stay on.
+  `native-off.autoapply.html` has been corrected; **check your own saved
+  profiles and slots** — any native profile with *Lightbar Off* ticked needs
+  it unticked and re-saved, or the lightbar will go dark in the games you least
+  want it to. A battery notification still overrides the setting for the seconds it runs.
 
 ## [1.35.2] — 2026-08-27
 
