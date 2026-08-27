@@ -182,9 +182,12 @@ void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
     // scenarios where the game never sends DualSense lightbar commands, so it
     // sits at a default glow (blue in DS4Windows). In native (auto-haptics Off)
     // or Mix, the lightbar is left as-is so games can control it (passthrough).
-    if (get_config().lightbar_off &&
-        get_config().auto_haptics_enable == 2 &&
-        size > 46) {
+    // Mode-agnostic on purpose. This began life gated on Replace, because that
+    // is what it was added for, but which haptics mode is running has nothing to
+    // do with whether someone wants the light on. Mode is per-profile, so
+    // "dark in this game, lit in that one" is already expressible with two
+    // profiles - the setting does not need to know about modes to achieve it.
+    if (get_config().lightbar_off && size > 46) {
         data[1] |= 0x04;   // AllowLedColor
         data[44] = 0x00;   // LedRed
         data[45] = 0x00;   // LedGreen
