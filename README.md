@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.36.0**
+**Version 1.37.2**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.36.0-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.37.2-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -70,6 +70,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Right Stick Inversion](#right-stick-inversion)
   - [Gyro sensitivity: Natural or Manual (new in 1.32.0)](#gyro-sensitivity-natural-or-manual-new-in-1320)
   - [Stick to Mouse (new in 1.30.0)](#stick-to-mouse-new-in-1300)
+  - [Touchpad as Mouse (new in 1.37.0)](#touchpad-as-mouse-new-in-1370)
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
   - [Battery notification (new in 1.35.0)](#battery-notification-new-in-1350)
@@ -277,7 +278,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.36.0.uf2` (Pico 2 W) or `ds5-v1.36.0-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.37.2.uf2` (Pico 2 W) or `ds5-v1.37.2-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1288,6 +1289,35 @@ It is **mutually exclusive with Flick Stick**, which also claims the right stick
 report. And as with gyro-to-mouse, a game that reads the pad *and* the mouse may
 need the controller hidden with HidHide, or it receives the movement twice.
 
+### Touchpad as Mouse *(new in 1.37.0)*
+
+Uses the touchpad as a trackpad. It is **relative**: the pointer follows how far
+your finger *moves*, so you can lift and reposition exactly as you would on a
+laptop. Useful from the sofa, where reaching for a mouse is the whole problem.
+
+Settings are on the **Device** tab, in their own *Touchpad as Mouse* section.
+
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| Touchpad as Mouse | on/off | off | Adds the mouse HID interface, so the device re-enumerates once when you turn it on or off |
+| Touchpad Speed | 1–250 | 100 | Pointer speed. 100 crosses most of a screen in one swipe |
+| Touchpad Jitter Filter | 0–20 | 1 | Ignores finger movement smaller than this many pad counts, so a resting finger does not make the pointer drift |
+| Touchpad Invert | None / X / Y / Both | None | Flips the pointer direction per axis |
+| Touchpad Trackball | on/off | off | Keeps the pointer gliding after you lift off, so one flick can cross a large screen |
+| Trackball Friction | 1–100 | 10 | Fraction of speed shed every 100 ms. Higher stops sooner; 10 glides for roughly two seconds |
+
+**Clicks are not part of this setting, on purpose.** The touchpad-click halves
+are already macro triggers and can output mouse buttons, so left and right click
+are one macro row each — and you choose which half is which, rather than being
+given a fixed corner. See the Macros section.
+
+It shares the pointer accumulator with gyro aiming and Stick to Mouse, so the
+three **add** rather than fight, and sub-count movement is carried between ticks
+so slow drags still register.
+
+There is no on/off chord. Enablement is per profile and profiles load per game,
+so a desktop profile can have it on while every game profile leaves it off.
+
 ### Macros (new in 1.19.0)
 
 Bind a controller button press or a touchpad swipe to a keyboard combo. For example you can press
@@ -1876,9 +1906,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.36.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.36.0)
-- `ds5-v1.36.0-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.37.2.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.37.2)
+- `ds5-v1.37.2-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

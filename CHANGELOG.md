@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented here.
 
+## [1.37.2] — 2026-08-28
+
+### Added
+
+- **Touchpad as Mouse.** Relative, trackpad style: the pointer follows how far
+  your finger *moves*, not where it is, so you can lift and reposition the way
+  you would on a laptop touchpad. Settings are **Touchpad Speed**, a **jitter
+  filter** so a resting finger does not make the pointer drift, invert per axis,
+  and an optional **trackball** mode that keeps the pointer gliding after you
+  lift off, decaying at a **friction** you set — enough to cross a large screen
+  from a single flick.
+
+  **Clicks are deliberately not part of it.** The touchpad-click halves are
+  already macro triggers and can output mouse buttons, so left and right click
+  are one macro row each and you choose which half is which — more flexible than
+  a fixed corner, and it already exists.
+
+  It shares the pointer accumulator with gyro aiming and Stick to Mouse, so the
+  three add rather than fight, and it carries sub-count movement between ticks so
+  slow drags still register. Turning it on adds the mouse HID interface, so the
+  device re-enumerates once.
+
+  There is no on/off chord: enablement is per profile, and profiles load per
+  game, so a desktop profile can have it on while every game profile leaves it
+  off.
+
+### Changed
+
+- `utils.h` names two previously unknown fields in the controller output
+  report — `AllowEdgeProfileSwitchControl` (byte 38 bit 6) and
+  `EdgeProfileSwitchMode` (byte 40), identified by SundayMoments/DS5_Bridge and
+  not verified here. Documentation only; the firmware does not set them. The old
+  note guessing byte 40 was `HapticLowPassFilter` off by one was wrong — that is
+  at 39.0.
+
 ## [1.36.0] — 2026-08-27
 
 ### Changed

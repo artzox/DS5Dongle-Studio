@@ -231,6 +231,14 @@ const SECTIONS = [
     [0x9c,'batt_stage_g_2','u8','Stage 3 — colour green','number',[0,255]],
     [0x9d,'batt_stage_b_2','u8','Stage 3 — colour blue','number',[0,255]],
   ]},
+  { title: 'Touchpad as Mouse', fields: [
+    [0xa2,'touch_mouse','u8','Touchpad as Mouse','bool'],
+    [0xa3,'touch_mouse_sens','u8','Touchpad Speed','number',[1,250]],
+    [0xa4,'touch_mouse_min','u8','Touchpad Jitter Filter','number',[0,20]],
+    [0xa5,'touch_mouse_invert','u8','Touchpad Invert','select',{0:'None',1:'X',2:'Y',3:'Both'}],
+    [0xa6,'touch_mouse_trackball','u8','Touchpad Trackball (keep gliding)','bool'],
+    [0xa7,'touch_mouse_friction','u8','Trackball Friction','number',[1,100]],
+  ]},
   { title: 'Native Haptics Filter', fields: [
     [0x33,'haptics_aa','u8','Smoothing (anti-alias filter)','select',{1:'Off — raw & gritty (pre-1.0.4 texture)',2:'Light — kills grit, keeps snap (recommended)',3:'Strong — maximum smooth (can feel muted)'}],
   ]},
@@ -339,6 +347,12 @@ const DESCRIPTIONS = {
   auto_haptics_slope: "How sharply the low-pass cuts off the unwanted higher frequencies.",
   auto_mute_replace: "Mutes the controller speaker automatically in Replace mode.",
   auto_mute_mix: "Mutes the controller speaker automatically in Mix mode.",
+  touch_mouse: "Use the touchpad as a trackpad: the pointer follows how far your finger MOVES, like a laptop touchpad. Clicks are not part of this \u2014 bind the touchpad-click halves as macros with a mouse output, which lets you choose which half is left and which is right. Turning this on adds the mouse interface, so the device re-enumerates once.",
+  touch_mouse_sens: "Pointer speed. 100 is roughly 1:1 with the pad; raise it to cross the screen in one swipe.",
+  touch_mouse_min: "Ignore finger movement smaller than this many pad counts, so a resting finger does not make the pointer drift. 1 or 2 is usually enough.",
+  touch_mouse_invert: "Flip the pointer direction on either axis.",
+  touch_mouse_trackball: "Keep the pointer gliding after you lift your finger, so a flick can cross a large screen without repeated drags.",
+  touch_mouse_friction: "How quickly the glide slows down. Higher stops sooner.",
   lightbar_off: "Keeps the controller's lightbar dark, in every haptics mode. A battery notification still overrides it for the seconds it runs.",
   rumble_haptic_strength: "Strength of a game's rumble re-created on the actuators when it can't be handed to native rumble.",
   effect_leak_volume: "How loudly sharp one-off sounds leak to the speaker while it's muted.",
@@ -2554,6 +2568,15 @@ async function saveAll(){
     if (!needReconnect && ((+savedSnapshot.stick_mouse >= 1) !== (+config.stick_mouse >= 1))) {
       needReconnect = true;
     }
+    // Touchpad-to-mouse brings the SAME interface up, and was missed here when
+    // it was added: the firmware's usb_mouse_iface_needed() knew about it, but
+    // this list did not, so ticking it on a profile with no other mouse feature
+    // added an interface the host was never told to re-read - the setting simply
+    // did nothing. Three places now name the mouse interface; they have to move
+    // together.
+    if (!needReconnect && ((+savedSnapshot.touch_mouse >= 1) !== (+config.touch_mouse >= 1))) {
+      needReconnect = true;
+    }
 
     if (!needReconnect){
       // No enumeration-time change — settings are already applied live. Just
@@ -2741,6 +2764,7 @@ const SECTION_TAB = {
   'Stick to Mouse':'gyro',
   'Device & Connection':'device',
   'Battery Notification':'device',
+  'Touchpad as Mouse':'device',
   'Advanced — BT Latency (experimental)':'device',
   'Macros':'macros',
 };
@@ -5523,7 +5547,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.36.0</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.37.2</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
