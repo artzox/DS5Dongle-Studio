@@ -354,6 +354,17 @@ struct __attribute__((packed)) Config_body {
     // Per-stage on/off, kept SEPARATE from the level so unticking a stage does
     // not throw away the level and colour it was set to.
     uint8_t  batt_stage_on[3];
+    // ---- Touchpad to mouse (appended 1.37.0) ----
+    // Relative, trackpad style: the pointer follows how far the finger MOVED,
+    // not where it is. Clicks are deliberately absent - the touchpad-click
+    // halves are already macro triggers and can output mouse buttons, so
+    // binding left/right click there costs nothing and stays configurable.
+    uint8_t  touch_mouse;            // 0 off, 1 on
+    uint8_t  touch_mouse_sens;       // "slide" speed, 100 = 1:1-ish, 0 -> default
+    uint8_t  touch_mouse_min;        // ignore movement smaller than this, in pad counts
+    uint8_t  touch_mouse_invert;     // bit0 X, bit1 Y
+    uint8_t  touch_mouse_trackball;  // 0 off, 1 = keep gliding after release
+    uint8_t  touch_mouse_friction;   // how fast the glide decays, higher = stops sooner
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so

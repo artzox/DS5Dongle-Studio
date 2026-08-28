@@ -36,8 +36,8 @@ static bool read_config_value(T &value, uint8_t const *buffer, uint16_t bufsize)
 // Firmware version, reported via read-only fields 0x7D/0x7E/0x7F so the portal
 // can display which build is flashed. Bump on every released build.
 constexpr uint8_t FW_VER_MAJOR = 1;
-constexpr uint8_t FW_VER_MINOR = 36;
-constexpr uint8_t FW_VER_PATCH = 0;
+constexpr uint8_t FW_VER_MINOR = 37;
+constexpr uint8_t FW_VER_PATCH = 2;
 
 // Width of the value the LAST successful write_config_value() emitted. The bulk
 // reader (0x0c) needs a length per field and used to carry its own hand-written
@@ -234,6 +234,12 @@ static bool set_field_in(Config_body &new_config, uint8_t field_id, uint8_t cons
         case 0x66: { uint16_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.stick_mouse_sens_y=v; break; }
         case 0x80: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_sens_mode=v; break; }
         case 0x8e: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_notify_enable=v; break; }
+        case 0xa2: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.touch_mouse=v; break; }
+        case 0xa3: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.touch_mouse_sens=v; break; }
+        case 0xa4: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.touch_mouse_min=v; break; }
+        case 0xa5: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.touch_mouse_invert=v; break; }
+        case 0xa6: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.touch_mouse_trackball=v; break; }
+        case 0xa7: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.touch_mouse_friction=v; break; }
         case 0x9f: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_on[0]=v; break; }
         case 0xa0: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_on[1]=v; break; }
         case 0xa1: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_stage_on[2]=v; break; }
@@ -372,6 +378,12 @@ static bool get_config_field_from(const Config_body &config, uint8_t field_id, u
         // three landing on existing diagnostics.
         case 0x80: return write_config_value(buffer, bufsize, config.gyro_sens_mode);
         case 0x8e: return write_config_value(buffer, bufsize, config.batt_notify_enable);
+        case 0xa2: return write_config_value(buffer, bufsize, config.touch_mouse);
+        case 0xa3: return write_config_value(buffer, bufsize, config.touch_mouse_sens);
+        case 0xa4: return write_config_value(buffer, bufsize, config.touch_mouse_min);
+        case 0xa5: return write_config_value(buffer, bufsize, config.touch_mouse_invert);
+        case 0xa6: return write_config_value(buffer, bufsize, config.touch_mouse_trackball);
+        case 0xa7: return write_config_value(buffer, bufsize, config.touch_mouse_friction);
         case 0x9f: return write_config_value(buffer, bufsize, config.batt_stage_on[0]);
         case 0xa0: return write_config_value(buffer, bufsize, config.batt_stage_on[1]);
         case 0xa1: return write_config_value(buffer, bufsize, config.batt_stage_on[2]);

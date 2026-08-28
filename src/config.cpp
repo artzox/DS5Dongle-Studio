@@ -142,6 +142,12 @@ void config_valid() {
     // 0xFF-filled, so every value has to be clamped into range rather than
     // trusted - 0xFF blinks would flash for eight minutes.
     if (body->batt_notify_enable > 1) body->batt_notify_enable = 0;
+    if (body->touch_mouse > 1) body->touch_mouse = 0;
+    if (body->touch_mouse_sens == 0 || body->touch_mouse_sens > 250) body->touch_mouse_sens = 100;
+    if (body->touch_mouse_min > 20) body->touch_mouse_min = 1;
+    if (body->touch_mouse_invert > 3) body->touch_mouse_invert = 0;
+    if (body->touch_mouse_trackball > 1) body->touch_mouse_trackball = 0;
+    if (body->touch_mouse_friction == 0 || body->touch_mouse_friction > 100) body->touch_mouse_friction = 10;
     for (int i = 0; i < 3; i++) {
         if (body->batt_stage_level[i] > 10)  body->batt_stage_level[i] = 0;   // 0 = stage off
         if (body->batt_stage_blinks[i] > 20) body->batt_stage_blinks[i] = 5;

@@ -373,6 +373,12 @@ static volatile int32_t g_gm_pend_x = 0, g_gm_pend_y = 0; // computed in the rep
 // Latest position of whichever stick drives the mouse, 0-255 per axis, 128 at
 // rest. Written by the report path, consumed by gyro_mouse_task().
 static volatile uint8_t g_sm_stick_x = 128, g_sm_stick_y = 128;
+// Touchpad to mouse. The report path publishes the finger; gyro_mouse_task()
+// turns it into movement. Written as a position plus a down flag rather than a
+// delta so a dropped report cannot lose motion - the next tick simply sees a
+// larger gap.
+static volatile uint16_t g_tm_x = 0, g_tm_y = 0;
+static volatile bool     g_tm_down = false;
 // Sub-count remainder, so slow stick movement still moves the pointer: the same
 // reason the gyro path carries one.
 static float g_sm_rem_x = 0.0f, g_sm_rem_y = 0.0f;
@@ -709,6 +715,96 @@ void gyro_mouse_task() {
         }
     }
 
+    // --- Touchpad to mouse --------------------------------------------------
+    // Relative, trackpad style: the pointer follows how far the finger MOVED
+    // since the last tick. Deltas are computed from the finger POSITION rather
+    // than accumulated in the report path, so a dropped report costs nothing -
+    // the next tick just sees a bigger gap.
+    if (cfg.touch_mouse >= 1) {
+        static uint16_t s_px = 0, s_py = 0;
+        static bool     s_had = false;
+        static float    s_rx = 0.0f, s_ry = 0.0f;   // sub-count carry
+        static float    s_vx = 0.0f, s_vy = 0.0f;   // trackball glide
+        const bool down = g_tm_down;
+        const uint16_t cx = g_tm_x, cy = g_tm_y;
+
+        float dx = 0.0f, dy = 0.0f;
+        if (down) {
+            if (s_had) {
+                dx = (float) ((int32_t) cx - (int32_t) s_px);
+                dy = (float) ((int32_t) cy - (int32_t) s_py);
+            }
+            // A FRESH TOUCH must not move the pointer. Without this the first
+            // tick of every touch jumps by the distance between where the last
+            // finger left and where this one landed - which is the width of the
+            // pad if you lift and reposition, exactly what a trackpad user does
+            // constantly.
+            s_px = cx; s_py = cy; s_had = true;
+        } else {
+            s_had = false;
+        }
+
+        // Jitter floor. A resting finger still wobbles a count or two, and
+        // without this the pointer drifts while you are not touching anything.
+        const float minmove = (float) cfg.touch_mouse_min;
+        if (dx * dx + dy * dy < minmove * minmove) { dx = 0.0f; dy = 0.0f; }
+
+        if (cfg.touch_mouse_invert & 1) dx = -dx;
+        if (cfg.touch_mouse_invert & 2) dy = -dy;
+
+        const float sens = (float) cfg.touch_mouse_sens / 100.0f;
+        float mx = dx * sens, my = dy * sens;
+
+        if (cfg.touch_mouse_trackball) {
+            // TIME-BASED, not per-tick. This task runs every main-loop pass -
+            // far more often than reports arrive - so decaying by the friction
+            // once per tick killed the glide within milliseconds and the
+            // pointer stopped dead on release. Speed is now counts per SECOND
+            // and both the glide and its decay are scaled by real elapsed time.
+            static uint32_t s_tick_ms = 0, s_move_ms = 0;
+            const uint32_t now = to_ms_since_boot(get_absolute_time());
+            if (s_tick_ms == 0) s_tick_ms = now;
+            if (s_move_ms == 0) s_move_ms = now;
+            uint32_t dms = now - s_tick_ms;
+            if (dms > 100) dms = 100;              // a stall must not launch the pointer
+            s_tick_ms = now;
+
+            if (down) {
+                if (dx != 0.0f || dy != 0.0f) {
+                    // Speed of the last real movement, from the time between
+                    // MOVEMENTS rather than between ticks - most ticks carry no
+                    // new report and would read as infinite speed.
+                    const uint32_t mdt = (now > s_move_ms) ? (now - s_move_ms) : 1;
+                    s_vx = mx * 1000.0f / (float) mdt;
+                    s_vy = my * 1000.0f / (float) mdt;
+                    s_move_ms = now;
+                }
+            } else if (s_vx != 0.0f || s_vy != 0.0f) {
+                // Coast, so a flick can cross a large screen in one gesture.
+                mx = s_vx * (float) dms / 1000.0f;
+                my = s_vy * (float) dms / 1000.0f;
+                // Friction is the fraction of speed shed every 100 ms, so the
+                // feel does not change with the loop rate.
+                float keep = 1.0f - ((float) cfg.touch_mouse_friction / 100.0f)
+                                    * ((float) dms / 100.0f);
+                if (keep < 0.0f) keep = 0.0f;
+                s_vx *= keep; s_vy *= keep;
+                if (s_vx * s_vx + s_vy * s_vy < 4.0f) { s_vx = 0.0f; s_vy = 0.0f; }
+                s_move_ms = now;
+            }
+        } else if (!down) {
+            s_vx = 0.0f; s_vy = 0.0f;
+        }
+
+        // Same sub-count carry as the stick and gyro paths: slow movement is
+        // fractions of a count per tick and truncating it away loses it.
+        const float fx = mx + s_rx, fy = my + s_ry;
+        const int32_t ix = (int32_t) fx, iy = (int32_t) fy;
+        s_rx = fx - (float) ix; s_ry = fy - (float) iy;
+        g_gm_pend_x += ix;
+        g_gm_pend_y += iy;
+    }
+
     // --- Stick to mouse -----------------------------------------------------
     // Runs every tick so movement is smooth and time-based rather than tied to
     // however often reports happen to arrive.
@@ -829,6 +925,21 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
     } else if (cfg.stick_mouse == 2) {
         g_sm_stick_x = d[0]; g_sm_stick_y = d[1];   // left
         d[0] = 128; d[1] = 128;
+    }
+
+    // Touchpad to mouse. Finger 1 only: byte 33 bit 7 clear means down, and the
+    // 12-bit X / 12-bit Y are packed across bytes 34-36. The touch data is NOT
+    // stripped from the report - the pad-click halves are macro triggers and a
+    // game may use the pad itself, so this only reads.
+    if (cfg.touch_mouse >= 1) {
+        // Use the SHARED decoder rather than unpacking the bytes again here.
+        // touch_point() is what macro.cpp's gestures and pad-click halves
+        // already read, so there is one definition of "where the finger is" and
+        // a second hand-copied one cannot drift from it.
+        const TouchPoint f = touch_point(d, 63, 0);
+        g_tm_x    = f.x;
+        g_tm_y    = f.y;
+        g_tm_down = f.down;
     }
 
     if (cfg.gyro_mode == 0) return;

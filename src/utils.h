@@ -369,12 +369,22 @@ struct __attribute__((packed)) SetStateData { // 47
 /*38.2*/ uint8_t EnableImprovedRumbleEmulation: 1; // Use instead of EnableRumbleEmulation
                                                    // requires FW >= 0x0224
                                                    // No need to halve rumble strength
-/*38.3*/ uint8_t UNKBITC: 5; // unused
+/*38.3*/ uint8_t UNKBITC: 3; // unused
+/*38.6*/ uint8_t AllowEdgeProfileSwitchControl: 1; // Enable setting EdgeProfileSwitchMode below
+/*38.7*/ uint8_t UNKBITC2: 1; // unused
 /*    */
 /*39.0*/ uint8_t HapticLowPassFilter: 1;
 /*39.1*/ uint8_t UNKBIT: 7;
 /*    */
-/*40  */ uint8_t UNKBYTE; // previous notes suggested this was HLPF, was probably off by 1
+/*40  */ uint8_t EdgeProfileSwitchMode; // DualSense EDGE only. 0x80 blocks the
+/*    */                                 // controller's own Fn + face button
+/*    */                                 // onboard profile switching, freeing
+/*    */                                 // those combinations for the host.
+/*    */                                 // Needs AllowEdgeProfileSwitchControl.
+/*    */                                 // Identified by SundayMoments/DS5_Bridge;
+/*    */                                 // NOT verified on hardware here. The old
+/*    */                                 // comment guessed this was HapticLowPassFilter
+/*    */                                 // off by one - it is not, HLPF is 39.0.
 /*    */
 /*41  */ LightFadeAnimation::LightFadeAnimation LightFadeAnimation;
 /*42  */ LightBrightness::LightBrightness LightBrightness;

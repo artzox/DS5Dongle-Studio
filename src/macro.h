@@ -60,6 +60,7 @@ bool macro_any_mouse_output(uint32_t disable_mask);
 static inline bool usb_mouse_iface_needed(const Config_body &c) {
     return c.gyro_output >= 1              // 1 = mouse, 2 = mouse + flick stick
         || c.stick_mouse >= 1              // 1 = right stick, 2 = left stick
+        || c.touch_mouse >= 1              // touchpad as a trackpad
         || macro_any_mouse_output(c.macro_disable);
 }
 
