@@ -1315,6 +1315,13 @@ It shares the pointer accumulator with gyro aiming and Stick to Mouse, so the
 three **add** rather than fight, and sub-count movement is carried between ticks
 so slow drags still register.
 
+> Two gyro activation schemes use the touchpad themselves and do not combine
+> well with this: *only while the touchpad is touched* runs the gyro during
+> exactly the drag that is moving the pointer, so both add together and the
+> pointer overshoots, and *ratchet* pauses the gyro whenever you touch the pad,
+> so you get pointer or gyro but never both. The portal warns when either is
+> selected. Gate the gyro on a trigger or a shoulder instead.
+
 There is no on/off chord. Enablement is per profile and profiles load per game,
 so a desktop profile can have it on while every game profile leaves it off.
 

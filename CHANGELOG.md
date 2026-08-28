@@ -28,6 +28,13 @@ All notable changes to this project are documented here.
   game, so a desktop profile can have it on while every game profile leaves it
   off.
 
+  The portal warns if **Touchpad as Mouse** is on while gyro activation is set to
+  one of the two touchpad-based schemes, since both want the same finger: *only
+  while the touchpad is touched* adds wrist movement to every drag, and *ratchet*
+  pauses the gyro exactly when you are moving the pointer. It is a warning rather
+  than a block — taking turns may be what you want on a desktop profile — and the
+  other activation schemes gate on triggers or shoulders and compose cleanly.
+
 ### Changed
 
 - `utils.h` names two previously unknown fields in the controller output

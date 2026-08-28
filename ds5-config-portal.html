@@ -5396,6 +5396,25 @@ function t2GateWarning(key){
          `that is not gated by ${name}.`;
 }
 
+// Touchpad-to-mouse and the two touchpad-based gyro activation schemes both
+// want the same finger. Warned rather than blocked: the combination is coherent
+// on mode 4 if you actually want the pointer and the gyro to take turns, and
+// nothing here silently rewrites a setting the user chose.
+function touchGyroWarning(){
+  if (!(+config.touch_mouse >= 1)) return '';
+  const m = +config.gyro_mode || 0;
+  if (m !== 3 && m !== 4) return '';
+  if (m === 3) {
+    return 'Gyro is set to <b>only while the touchpad is touched</b>, which is exactly when ' +
+           'your finger is also driving the pointer. Both feed the same mouse, so every drag ' +
+           'gets finger movement plus wrist movement added together and overshoots. ' +
+           'Gate the gyro on a trigger or shoulder instead, or turn Touchpad as Mouse off here.';
+  }
+  return 'Gyro is set to <b>ratchet</b>, so touching the touchpad pauses it — which is every ' +
+         'time you move the pointer. You will get pointer or gyro, never both. That may be ' +
+         'what you want on a desktop profile; if not, gate the gyro on a trigger or shoulder.';
+}
+
 function ceGateWarning(key){
   const isR2 = key === 'ce_r2_yield';
   const y = +config[isR2 ? 'ce_r2_yield' : 'ce_l2_yield'] || 0;
@@ -5462,14 +5481,17 @@ function fieldRowHTML(f){
     });
     html += `</div>`;
   } else if(kind==='bool'){
-    html += `<select onchange="config['${key}']=+this.value;(window._dirty=window._dirty||{})['${key}']=1">
+    // Same reasoning as the select below: a field that drives an inline warning
+    // has to redraw, or the warning only appears after some other edit.
+    const reRenderB = ['touch_mouse'].includes(key);
+    html += `<select onchange="config['${key}']=+this.value;(window._dirty=window._dirty||{})['${key}']=1${reRenderB?';render()':''}">
       <option value="0" ${config[key]==0?'selected':''}>No</option>
       <option value="1" ${config[key]==1?'selected':''}>Yes</option></select>`;
   } else if(kind==='select'){
     // NOTE: never embed a JSON array here - its double quotes close the onchange
     // attribute and silently break EVERY select in the portal. Decide the
     // re-render here and emit only a bare call.
-    const reRender = ['ce_r2_yield','ce_l2_yield','at_mode','at_l2_mode','ce_r2_enable','ce_l2_enable','t2_button','t2_l2_button'].includes(key);
+    const reRender = ['ce_r2_yield','ce_l2_yield','at_mode','at_l2_mode','ce_r2_enable','ce_l2_enable','t2_button','t2_l2_button','gyro_mode'].includes(key);
     html += `<select onchange="config['${key}']=+this.value;(window._dirty=window._dirty||{})['${key}']=1${reRender?';render()':''}">`;
     { const pairs = Array.isArray(opts) ? opts : Object.entries(opts); for(const [v,lbl] of pairs) html += `<option value="${v}" ${config[key]==v?'selected':''}>${lbl}</option>`; }
     html += `</select>`;
@@ -5489,6 +5511,10 @@ function fieldRowHTML(f){
   html += `</div></div>`;
   if(key === 'ce_r2_yield' || key === 'ce_l2_yield'){
     const w = ceGateWarning(key);
+    if(w) html += `<div class="row" style="padding-top:0"><div></div><div style="font-size:11px;color:#e0a030;line-height:1.35">⚠ ${w}</div></div>`;
+  }
+  if(key === 'touch_mouse' || key === 'gyro_mode'){
+    const w = touchGyroWarning();
     if(w) html += `<div class="row" style="padding-top:0"><div></div><div style="font-size:11px;color:#e0a030;line-height:1.35">⚠ ${w}</div></div>`;
   }
   if(key === 't2_button' || key === 't2_l2_button'){
