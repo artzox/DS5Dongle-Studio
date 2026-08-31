@@ -35,6 +35,16 @@ All notable changes to this project are documented here.
   than a block — taking turns may be what you want on a desktop profile — and the
   other activation schemes gate on triggers or shoulders and compose cleanly.
 
+### Fixed
+
+- **A short override entry captured longer game names.** `profile-overrides.txt`
+  matches a fragment anywhere in the title and the first hit won, so `God of War`
+  also matched `God of War Ragnarök` and loaded the 2018 game's audio-mix slot —
+  overriding a correct native classification, and making the result depend on
+  line order in a file that says nothing about ordering. The **longest** matching
+  fragment now wins, so both games can be listed in any order, and the start log
+  names any shorter entry it passed over.
+
 ### Changed
 
 - `utils.h` names two previously unknown fields in the controller output
