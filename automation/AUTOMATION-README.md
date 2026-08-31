@@ -142,6 +142,27 @@ ds5audio launch argument rather than a dongle setting: a profile slot alone
 cannot change which channels the script writes to. See the firmware README
 ("Which setup for which game") for which mapping suits which kind of game.
 
+### Overrides match on a substring, and the longest match wins
+
+`profile-overrides.txt` matches a fragment anywhere in the game's name, so a
+short entry also matches every longer title containing it — `God of War` matches
+`God of War Ragnarök` as well as the 2018 game.
+
+The **most specific** entry wins, so both can be listed and the order in the file
+does not matter:
+
+```
+God of War = slot17, audio
+God of War Ragnarök = native-off.autoapply.html, noaudio
+```
+
+The start log says which entry won and names any shorter one it passed over, so
+a surprising profile can be traced without guessing.
+
+Note that an override beats the native-games list. If a game is on
+`native-games.txt` **and** caught by a loose override fragment, the override
+decides — which is how a sequel could quietly load the prequel's audio-mix slot.
+
 ## Known issues
 
 **A profile that changes wake (or another enumeration-critical setting) briefly

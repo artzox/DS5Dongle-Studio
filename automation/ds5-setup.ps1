@@ -131,6 +131,7 @@ function Normalize-Name([string]$s) {
 # audio/noaudio flag forces the capture decision; when omitted, the native list
 # decides as usual. Matching uses the same mojibake-proof fold as native-games.
 $overrideProfile = $null; $overrideAudio = $null; $overrideAudioArgs = @()
+$bestLen = 0; $bestFrag = $null   # longest override fragment matched so far
 $OverrideFile = Join-Path $DS5Dir "profile-overrides.txt"
 if (Test-Path -LiteralPath $OverrideFile) {
     $gof = Normalize-Name $gameName
@@ -160,13 +161,30 @@ if (Test-Path -LiteralPath $OverrideFile) {
         $fn = Normalize-Name $frag
         $hit = if ($fn) { $gof.Contains($fn) } else { $gameName -and $gameName.ToLower().Contains($frag.ToLower()) }
         if ($hit) {
-            $overrideProfile = $file
-            if ($flag -eq "audio" -or $flag -eq "noaudio") { $overrideAudio = $flag }
-            if ($xargs.Count) { $overrideAudioArgs = $xargs }
-            $fl = if ($flag) { " ($flag)" } else { "" }
-            $xa = if ($xargs.Count) { " args: " + ($xargs -join " ") } else { "" }
-            Log "matched override entry: '$frag' -> '$file'$fl$xa"
-            break
+            # LONGEST fragment wins, not the first one in the file.
+            #
+            # Matching is a SUBSTRING test, so a short entry swallows every
+            # sequel that contains it: 'God of War' matched 'God of War
+            # Ragnarok' and loaded its slot, silently overriding a correct
+            # native classification. Taking the first hit made the answer depend
+            # on line order in profile-overrides.txt, which nothing tells you
+            # about and which is easy to disturb by adding a line.
+            $len = if ($fn) { $fn.Length } else { $frag.Length }
+            if ($len -gt $bestLen) {
+                if ($bestLen -gt 0) {
+                    Log "  more specific than '$bestFrag' - using the longer match"
+                }
+                $bestLen  = $len
+                $bestFrag = $frag
+                $overrideProfile = $file
+                $overrideAudio = if ($flag -eq "audio" -or $flag -eq "noaudio") { $flag } else { $overrideAudio }
+                $overrideAudioArgs = if ($xargs.Count) { $xargs } else { $overrideAudioArgs }
+                $fl = if ($flag) { " ($flag)" } else { "" }
+                $xa = if ($xargs.Count) { " args: " + ($xargs -join " ") } else { "" }
+                Log "matched override entry: '$frag' -> '$file'$fl$xa"
+            } else {
+                Log "  ignoring shorter override entry '$frag' ('$bestFrag' is more specific)"
+            }
         }
     }
 }
