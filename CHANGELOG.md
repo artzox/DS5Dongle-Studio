@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented here.
 
+## [1.39.4] — 2026-08-29
+
+### Added
+
+- **Tilt steering.** Roll the controller like a small wheel and it **adds** to the
+  left stick rather than replacing it. The angle comes from gravity, so it is
+  absolute: it never drifts and always returns to centre when you level the pad,
+  which integrating the gyro for an angle could never do.
+
+  Adding rather than replacing is the point. Tilt-only steering was tried in the
+  SIXAXIS era — MotorStorm, Ridge Racer 7, Burnout Paradise — and the verdict was
+  always the same: not precise enough to steer with, because the whole range lived
+  in a wrist angle you cannot hold steady. As an offset, coarse steering stays on
+  the stick where it is precise and tilt supplies the fine control on top. With
+  the stick centred the offset falls inside the game's own dead zone, so driving
+  straight does not wander, and at full lock there is nothing left to add — what
+  is left is the middle of the range, which is exactly where a stick is hardest
+  to be precise with.
+
+  Settings are **tilt range** (degrees for full effect), **maximum stick added**,
+  a **dead zone** in degrees, and invert. Racing games apply their own steering
+  dead zone, so anything below about 60% does nothing you can feel; 70 gives
+  usable trim and 100 lets tilt steer on its own.
+
+- **Lean, on its own switch.** *Also tilt forward/back* adds leaning the
+  controller to the left stick's Y, for bikes and anything with a weight shift —
+  in MotorStorm it is how you lean a bike in the air. Separate from steering, and
+  with its own amount, because a car wants one and not the other.
+
+- **Tilt diagnostics** in the Device tab: whether the block is running, the roll
+  and lean angles it computed, and what it is adding to each stick axis. The
+  three failure modes — not running, gravity rejected, and running but too small
+  to clear the game's dead zone — all look identical from the outside, and this
+  line separates them. Calibrate with the live test on the Macros tab, which
+  shows the stick value the game actually receives.
+
 ## [1.38.2] — 2026-08-29
 
 ### Added

@@ -231,6 +231,16 @@ const SECTIONS = [
     [0x9c,'batt_stage_g_2','u8','Stage 3 — colour green','number',[0,255]],
     [0x9d,'batt_stage_b_2','u8','Stage 3 — colour blue','number',[0,255]],
   ]},
+  { title: 'Tilt Steering (experimental)', fields: [
+    [0xab,'tilt_steer','u8','Tilt Steering','bool'],
+    [0xac,'tilt_steer_range','u8','Tilt range (degrees for full effect)','number',[1,90]],
+    [0xad,'tilt_steer_amount','u8','Maximum stick added (%)','number',[0,100]],
+    [0xae,'tilt_steer_deadzone','u8','Tilt deadzone (degrees)','number',[0,30]],
+    [0xaf,'tilt_steer_invert','u8','Invert tilt direction','bool'],
+    [0xb3,'tilt_steer_y','u8','Also tilt forward/back (lean)','bool'],
+    [0xb4,'tilt_steer_y_amount','u8','Maximum stick added, lean (%)','number',[0,100]],
+    [0xb5,'tilt_steer_y_invert','u8','Invert lean direction','bool'],
+  ]},
   { title: 'Touchpad as Mouse', fields: [
     [0xa2,'touch_mouse','u8','Touchpad as Mouse','bool'],
     [0xa3,'touch_mouse_sens','u8','Touchpad Speed','number',[1,250]],
@@ -347,6 +357,14 @@ const DESCRIPTIONS = {
   auto_haptics_slope: "How sharply the low-pass cuts off the unwanted higher frequencies.",
   auto_mute_replace: "Mutes the controller speaker automatically in Replace mode.",
   auto_mute_mix: "Mutes the controller speaker automatically in Mix mode.",
+  tilt_steer_y: "Adds leaning the controller forward and back to the left stick's Y, on its own switch so it does not affect games where only steering matters. Meant for bikes and anything with a weight shift \u2014 in MotorStorm it is how you lean a bike in the air.",
+  tilt_steer_y_amount: "The most lean may add, as a percentage of full stick. Separate from the steering amount, because how much lean a game wants is not how much steering it wants.",
+  tilt_steer_y_invert: "Flip which way a lean pushes.",
+  tilt_steer: "Roll the controller like a small steering wheel and it ADDS to the left stick, rather than replacing it \u2014 coarse steering stays on the stick and tilt supplies trim on top. The angle comes from gravity, so it never drifts and always returns to centre when you level the pad. Calibrate it with the live test on the Macros tab: roll the pad and watch the L stick figure move, so you can see what the game will actually receive.",
+  tilt_steer_range: "How far you have to roll the pad for the full effect. Smaller means a small tilt does more.",
+  tilt_steer_amount: "The most tilt may add, as a percentage of full stick. Racing games apply their own steering dead zone, so anything below about 60 does nothing you can feel. Around 70 gives usable trim on top of the stick; 100 makes tilt able to steer on its own.",
+  tilt_steer_deadzone: "Degrees around level that do nothing, so the way you naturally hold the pad does not steer for you.",
+  tilt_steer_invert: "Flip which way a roll steers.",
   touch_mouse: "Use the touchpad as a trackpad: the pointer follows how far your finger MOVES, like a laptop touchpad. Clicks are not part of this \u2014 bind the touchpad-click halves as macros with a mouse output, which lets you choose which half is left and which is right. Turning this on adds the mouse interface, so the device re-enumerates once.",
   touch_mouse_sens: "Pointer speed. 100 is roughly 1:1 with the pad; raise it to cross the screen in one swipe.",
   touch_mouse_min: "Ignore finger movement smaller than this many pad counts, so a resting finger does not make the pointer drift. 1 or 2 is usually enough.",
@@ -2641,6 +2659,14 @@ async function readDiag(){
     try {
       axv = await readField(0xa8, 'u16'); ayv = await readField(0xa9, 'u16'); azv = await readField(0xaa, 'u16');
     } catch(e) {}
+    // Tilt steering, end to end: did the block run, what roll did it compute,
+    // and what did it add to the stick. If "add" is non-zero and the game does
+    // not move, the fault is past the dongle.
+    let tdeg = null, tadd = null, tran = null, tydeg = null, tyadd = null;
+    try {
+      tdeg = await readField(0xb0, 'u16'); tadd = await readField(0xb1, 'u16'); tran = await readField(0xb2, 'u8');
+      tydeg = await readField(0xb6, 'u16'); tyadd = await readField(0xb7, 'u16');
+    } catch(e) {}
     try { c01 = await readField(0x37, 'u16'); c23 = await readField(0x38, 'u16'); } catch(e) {}
     let ke = null;
     try { ke = await readField(0x3c, 'u8'); } catch(e) {}
@@ -2654,7 +2680,7 @@ async function readDiag(){
     // meters 0x69-0x6b now live on the Haptics tab, read by readAhMeter().)
     let bat = null;
     try { bat = await readField(0x68, 'u8'); } catch(e) {}
-    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat, axv, ayv, azv};
+    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat, axv, ayv, azv, tdeg, tadd, tran, tydeg, tyadd};
   } catch(e){ return {br:'err', ch:'err', rssi:null, gy:null, sy:null, c01:null, c23:null, ke:null, rl:null, rr:null, rf:null, bat:null}; }
 }
 function rssiLabel(r){
@@ -2722,6 +2748,16 @@ async function refreshDiag(){
     // they describe and beside the live test that corroborates them. Reading
     // "hiding L3" here while the macro row sat on another tab meant holding the
     // two halves of the diagnosis in your head; see macroLivePanelHTML().
+    if (d.tran !== null && d.tran !== undefined) {
+      const sg = v => (v > 32767 ? v - 65536 : v);
+      const st = d.tran === 1 ? 'running' : d.tran === 2 ? 'gravity reading rejected (shake or free fall)'
+                                          : 'NOT running \u2014 the setting is off, or was clamped away on save';
+      extra += `<br>Tilt steering: ${st}, roll ${sg(d.tdeg)}\u00b0, adding ${sg(d.tadd)} to the left stick` +
+               ` (roll should swing as you tilt the pad; if "adding" is non-zero and the car does not turn, the game is ignoring it)`;
+      if (d.tydeg !== null && d.tydeg !== undefined && (sg(d.tydeg) || sg(d.tyadd))) {
+        extra += `<br>Tilt lean: ${sg(d.tydeg)}\u00b0, adding ${sg(d.tyadd)} to the left stick's Y`;
+      }
+    }
     if (d.axv !== null && d.axv !== undefined) {
       const sgn = v => (v > 32767 ? v - 65536 : v);
       extra += `<br>Accelerometer: X ${sgn(d.axv)}  Y ${sgn(d.ayv)}  Z ${sgn(d.azv)}` +
@@ -2778,6 +2814,7 @@ const SECTION_TAB = {
   'Device & Connection':'device',
   'Battery Notification':'device',
   'Touchpad as Mouse':'device',
+  'Tilt Steering (experimental)':'device',
   'Advanced — BT Latency (experimental)':'device',
   'Macros':'macros',
 };
@@ -5586,7 +5623,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.38.2</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.39.4</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
@@ -5620,6 +5657,13 @@ function render(){
     // they depend on - not appended after every other card at the foot of the
     // page, where the Save button sits between a setting and its switch.
     if (section.title === 'Battery Notification') html += battStagesPanelHTML();
+    if (section.title === 'Tilt Steering (experimental)') {
+      html += '<div style="font-size:12px;color:var(--sub);margin-top:6px">' +
+              'Calibrate with <b>Start live test</b> on the Macros tab: roll the pad and watch the ' +
+              '<b>L stick</b> figure. That is the value the game receives, so you can see the offset ' +
+              'appear and size it against the game\'s own steering dead zone \u2014 a setting that looks ' +
+              'active here can still be swallowed before it reaches the car.</div>';
+    }
     html += `</div>`;
     // BRACES MATTER HERE: the single-statement form let the two lines added
     // below run for EVERY section on EVERY tab, emitting the audio panel over

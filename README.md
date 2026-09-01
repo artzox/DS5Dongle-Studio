@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.38.2**
+**Version 1.39.4**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.38.2-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.39.4-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -71,6 +71,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Gyro sensitivity: Natural or Manual (new in 1.32.0)](#gyro-sensitivity-natural-or-manual-new-in-1320)
   - [Stick to Mouse (new in 1.30.0)](#stick-to-mouse-new-in-1300)
   - [Touchpad as Mouse (new in 1.37.0)](#touchpad-as-mouse-new-in-1370)
+  - [Tilt steering (new in 1.39.4)](#tilt-steering-new-in-1394)
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
   - [Battery notification (new in 1.35.0)](#battery-notification-new-in-1350)
@@ -278,7 +279,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.38.2.uf2` (Pico 2 W) or `ds5-v1.38.2-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.39.4.uf2` (Pico 2 W) or `ds5-v1.39.4-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1350,6 +1351,40 @@ so slow drags still register.
 There is no on/off chord. Enablement is per profile and profiles load per game,
 so a desktop profile can have it on while every game profile leaves it off.
 
+### Tilt steering *(new in 1.39.4)*
+
+Roll the controller like a small steering wheel and it **adds** to the left
+stick. It does not replace it: coarse steering stays on the stick, where it is
+precise, and tilt supplies the fine control on top. The angle comes from gravity,
+so it never drifts and always returns to centre when you level the pad.
+
+Settings are on the **Device** tab, in the *Tilt Steering* section.
+
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| Tilt Steering | on/off | off | Roll left and right adds to the left stick's X |
+| Tilt range | 1–90° | 45 | How far you roll the pad for the full effect |
+| Maximum stick added | 0–100% | 70 | Racing games apply their own steering dead zone, so below about 60 nothing happens you can feel. 70 is usable trim; 100 lets tilt steer on its own |
+| Tilt dead zone | 0–30° | 3 | Degrees around level that do nothing, so your natural grip does not steer for you |
+| Invert tilt direction | on/off | off | Flip which way a roll steers |
+| Also tilt forward/back | on/off | off | Leaning adds to the left stick's Y — for bikes and weight shift, not cars |
+| Maximum stick added, lean | 0–100% | 70 | Separate from steering: how much lean a game wants is not how much steering it wants |
+| Invert lean direction | on/off | off | Flip which way a lean pushes |
+
+**Calibrate with the live test** on the Macros tab. Roll the pad and watch the
+**L stick** figure — that is the value the game receives, so you can size the
+offset against the game's own dead zone. A setting that looks active in the
+portal can still be swallowed before it reaches the car.
+
+The **Device tab diagnostics** show the angles and the offsets being applied,
+which distinguishes "not running" from "running but too small to matter".
+
+> Tilt-only steering was tried across the SIXAXIS era and consistently judged too
+> imprecise to replace a stick, because the entire steering range lived in a wrist
+> angle you cannot hold steady while being thrown around a track. Adding to the
+> stick avoids that: the stick keeps the coarse work, and tilt only has to supply
+> the last few percent.
+
 ### Macros (new in 1.19.0)
 
 Bind a controller button press or a touchpad swipe to a keyboard combo. For example you can press
@@ -1938,9 +1973,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.38.2.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.38.2)
-- `ds5-v1.38.2-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.39.4.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.39.4)
+- `ds5-v1.39.4-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —
