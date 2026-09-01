@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.39.4**
+**Version 1.39.5**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.39.4-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.39.5-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -279,7 +279,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.39.4.uf2` (Pico 2 W) or `ds5-v1.39.4-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.39.5.uf2` (Pico 2 W) or `ds5-v1.39.5-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1973,9 +1973,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.39.4.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.39.4)
-- `ds5-v1.39.4-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.39.5.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.39.5)
+- `ds5-v1.39.5-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

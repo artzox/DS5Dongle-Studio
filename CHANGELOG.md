@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## [1.39.4] — 2026-08-29
+## [1.39.5] — 2026-08-29
 
 ### Added
 
@@ -38,6 +38,14 @@ All notable changes to this project are documented here.
   line separates them. Calibrate with the live test on the Macros tab, which
   shows the stick value the game actually receives.
 
+  Both angles are measured against the combined magnitude of the other two axes
+  rather than against a single one. Comparing lean against one axis alone let the
+  two contaminate each other: a genuine 20° lean read as 27° at 45° of roll and
+  87° at 89°, and one degree past vertical it inverted outright, so lean snapped
+  between its extremes with nothing in between. The corrected form is identical
+  whenever the other axis is level, so it changes nothing in normal use and only
+  stops the collapse at the edges.
+
 ## [1.38.2] — 2026-08-29
 
 ### Added
@@ -66,6 +74,16 @@ All notable changes to this project are documented here.
   At rest one axis sits near ±8000, which is gravity. It is what player space
   reads, and it is the fastest way to confirm the sensor is being decoded
   correctly on a given controller.
+
+### Fixed
+
+- **A short override entry captured longer game names.** `profile-overrides.txt`
+  matches a fragment anywhere in the title and the first hit won, so `God of War`
+  also matched `God of War Ragnarök` and loaded the 2018 game's audio-mix slot —
+  overriding a correct native classification, and making the result depend on
+  line order in a file that says nothing about ordering. The **longest** matching
+  fragment now wins, so both games can be listed in any order, and the start log
+  names any shorter entry it passed over.
 
 ## [1.37.2] — 2026-08-28
 
@@ -99,16 +117,6 @@ All notable changes to this project are documented here.
   pauses the gyro exactly when you are moving the pointer. It is a warning rather
   than a block — taking turns may be what you want on a desktop profile — and the
   other activation schemes gate on triggers or shoulders and compose cleanly.
-
-### Fixed
-
-- **A short override entry captured longer game names.** `profile-overrides.txt`
-  matches a fragment anywhere in the title and the first hit won, so `God of War`
-  also matched `God of War Ragnarök` and loaded the 2018 game's audio-mix slot —
-  overriding a correct native classification, and making the result depend on
-  line order in a file that says nothing about ordering. The **longest** matching
-  fragment now wins, so both games can be listed in any order, and the start log
-  names any shorter entry it passed over.
 
 ### Changed
 
