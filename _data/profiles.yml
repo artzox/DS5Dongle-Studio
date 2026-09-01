@@ -73,6 +73,16 @@
   desc: "Auto-haptics from game audio, full native passthrough, converted rumble 50."
   wake: true
 
+- game: "Racing (generic preset)"
+  file: "/shared/profiles/Racing+Gyro_driving.json"
+  desc: "Auto-haptics from game audio, full native passthrough, converted rumble 50, Gyro driving."
+  wake: true
+
+- game: "Racing (generic preset)"
+  file: "/shared/profiles/Racing+Gyro_driving_two_stage_trigger.json"
+  desc: "Auto-haptics from game audio, full native passthrough, converted rumble 50, Gyro driving, Two-Stage Trigger."
+  wake: true
+
 - game: "Resident Evil 4 (2023)"
   file: "/shared/profiles/RE4_Dualsense.json"
   desc: "Auto-haptics from game audio, full native passthrough, converted rumble 100."
