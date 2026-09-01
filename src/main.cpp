@@ -1001,7 +1001,13 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
             // way, so the DEFAULT has to be the correct one and "Invert" has to
             // mean inverted. Shipping it the other way round makes every new
             // user tick a box to get the obvious behaviour.
-            float deg = -atan2f(gvx, gvy) * 57.2957795f;
+            // TILT-COMPENSATED. Measured against the magnitude of the other two
+            // axes, not against Y alone: at Y alone, leaning the pad far forward
+            // empties both Y and the axis it is compared with, and atan2 of two
+            // near-zero noisy numbers snaps between extremes. Identical to the
+            // simple form while the other axis is level, so the feel does not
+            // change - it only stops collapsing at the edges.
+            float deg = -atan2f(gvx, sqrtf(gvy * gvy + gvz * gvz)) * 57.2957795f;
             if (cfg.tilt_steer_invert) deg = -deg;
             const float dz = (float) cfg.tilt_steer_deadzone;
             if (deg > dz)       deg -= dz;
@@ -1025,7 +1031,12 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
             // how much steering it wants.
             if (cfg.tilt_steer_y) {
                 extern volatile int16_t g_diag_tilt_ydeg, g_diag_tilt_yadd;
-                float ydeg = -atan2f(gvz, gvy) * 57.2957795f;
+                // Same treatment, and this is the one that actually broke: at
+                // full roll, gravity has moved into X, so gz and gy are both
+                // near zero and lean jumped between -128 and +128 with nothing
+                // in between. Comparing against the magnitude of the other two
+                // axes keeps it stable however far the pad is rolled.
+                float ydeg = -atan2f(gvz, sqrtf(gvx * gvx + gvy * gvy)) * 57.2957795f;
                 if (cfg.tilt_steer_y_invert) ydeg = -ydeg;
                 if (ydeg > dz)       ydeg -= dz;
                 else if (ydeg < -dz) ydeg += dz;
