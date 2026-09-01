@@ -345,6 +345,10 @@ void __not_in_flash_func(interrupt_loop)() {
 // Report offsets: RightStickX=2, RightStickY=3, TriggerLeft=4,
 // AngularVelocityX(pitch)=15, Z(roll)=17, Y(yaw)=19 (int16 LE).
 volatile uint16_t g_diag_gyro = 0; // |horizontal gyro raw|, field 0x35
+// Raw accelerometer, for the portal. Exposed so the axis mapping and the sign
+// of player-space aim can be checked against a real controller instead of
+// trusting the wiki - which was already wrong once about which byte is yaw.
+volatile int16_t g_diag_ax = 0, g_diag_ay = 0, g_diag_az = 0;
 
 // --- gyro as a mouse -------------------------------------------------------
 //
@@ -970,7 +974,54 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
     // "turn the controller" motion shows up on the int16 at byte 17, NOT byte 19
     // as the wiki field names suggested — user testing showed 19 gives no
     // horizontal response while 17 tracks turning. So: yaw = 17, roll = 19.
-    int32_t horiz = (cfg.gyro_axis == 1) ? rd16(19) /* roll */ : rd16(17) /* yaw */;
+    int32_t horiz;
+    // ACCELEROMETER: bytes 21/23/25, immediately after the three gyro axes.
+    // At rest it reads gravity, which is what makes it useful - it tells us
+    // which way is DOWN, something the gyro alone can never know.
+    const int32_t ax = rd16(21), ay = rd16(23), az = rd16(25);
+    { extern volatile int16_t g_diag_ax, g_diag_ay, g_diag_az;
+      g_diag_ax = (int16_t) ax; g_diag_ay = (int16_t) ay; g_diag_az = (int16_t) az; }
+
+    if (cfg.gyro_axis == 2) {
+        // PLAYER SPACE. Yaw and roll both turn the view horizontally, and which
+        // one does the work depends entirely on how far the pad is tilted -
+        // which is why picking one by hand means holding the controller a fixed
+        // way. Projecting the rotation onto the DOWN vector asks the question
+        // that actually matters: how much did this movement turn the player
+        // about the world's vertical axis? Flat or tilted up, it answers the
+        // same, so the aim stops depending on wrist angle.
+        //
+        // Gravity is low-passed out of the accelerometer: a shake is transient,
+        // gravity is not, and steering off raw acceleration would make the aim
+        // jump every time the pad is knocked.
+        static float gx = 0.0f, gy = 0.0f, gz = 0.0f;
+        constexpr float A = 0.02f;                 // ~1s settle at report rate
+        gx += A * ((float) ax - gx);
+        gy += A * ((float) ay - gy);
+        gz += A * ((float) az - gz);
+        const float mag = sqrtf(gx * gx + gy * gy + gz * gz);
+        if (mag > 1000.0f) {                       // sane gravity, not free-fall
+            const float ux = gx / mag, uy = gy / mag, uz = gz / mag;
+            // Dot the angular velocity with the down vector. Sign convention
+            // follows the yaw axis so an upright pad behaves as it always has.
+            const float dot = (float) rd16(15) * ux
+                            + (float) rd16(17) * uy
+                            + (float) rd16(19) * uz;
+            horiz = (int32_t) dot;
+            // BOTH axes have to be corrected, not just this one. Fixing only
+            // the horizontal left the vertical reading the raw pitch byte, and
+            // once the pad is tilted a horizontal turn also rotates about the
+            // controller's own pitch axis - so a left-right sweep dragged the
+            // cursor diagonally. Removing the world-vertical part of the
+            // rotation leaves exactly the pitch that is NOT turning, which is
+            // what the vertical axis should follow.
+            pitch = (int32_t) ((float) rd16(15) - ux * dot);
+        } else {
+            horiz = rd16(17);                      // fall back to plain yaw
+        }
+    } else {
+        horiz = (cfg.gyro_axis == 1) ? rd16(19) /* roll */ : rd16(17) /* yaw */;
+    }
     // Live diagnostic (portal): |horiz| raw magnitude, pre-deadzone, whenever gyro
     // is enabled — lets sensitivity be calibrated against real numbers.
     { extern volatile uint16_t g_diag_gyro;

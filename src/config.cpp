@@ -229,7 +229,12 @@ void config_valid() {
     // Gyro aiming defaults (OFF by default).
     if (body->gyro_mode > 7) body->gyro_mode = 0; // 5=R2, 6=L1, 7=R1 gates (v1.11.0)
     if (body->gyro_sens < 1 || body->gyro_sens > 100) body->gyro_sens = 50;
-    if (body->gyro_axis > 1) body->gyro_axis = 0;
+    // 2 = player space (accelerometer-derived). The clamp was still 1 when that
+    // option was added, so selecting it was silently rewritten to yaw and the
+    // new mode could never be tested - it behaved identically to the old one,
+    // which is precisely what it looked like. Any new enum value has to move
+    // this line with it.
+    if (body->gyro_axis > 2) body->gyro_axis = 0;
     if (body->gyro_invert > 3) body->gyro_invert = 0;
     // Native-haptics smoothing: 0 is invalid so a fresh config defaults to Light (2).
     if (body->haptics_aa < 1 || body->haptics_aa > 3) body->haptics_aa = 2;

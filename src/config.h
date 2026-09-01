@@ -59,7 +59,8 @@ struct __attribute__((packed)) Config_body {
     // stick in the input report, so ANY game gets gyro aim with no PC software.
     uint8_t gyro_mode;      // 0=off, 1=L2-held, 2=always, 3=touchpad-touch enables, 4=always but touch pauses (ratchet)
     uint8_t gyro_sens;      // [1-100] sensitivity (50 = raw/40 per report)
-    uint8_t gyro_axis;      // horizontal source: 0=yaw (turn), 1=roll (tilt sideways)
+    uint8_t gyro_axis;      // horizontal source: 0=yaw (turn), 1=roll (tilt sideways),
+                            // 2=player space (uses gravity; see config_valid clamp)
     uint8_t gyro_invert;    // bit0 = invert X, bit1 = invert Y
     uint8_t haptics_aa;     // native-haptics smoothing: 1=off (raw/gritty), 2=light 1-pole ~2.4kHz (default), 3=strong 2-pole ~1.3kHz
     uint8_t synth_force;    // 0=yield to game trigger effects (default), 1=force r2t/at even if a game/app sends effects
