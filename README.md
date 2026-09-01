@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.37.2**
+**Version 1.38.2**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.37.2-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.38.2-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -278,7 +278,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.37.2.uf2` (Pico 2 W) or `ds5-v1.37.2-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.38.2.uf2` (Pico 2 W) or `ds5-v1.38.2-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1124,7 +1124,7 @@ Maps controller motion onto the right stick — or onto a mouse — for motion a
 | Gyro Mode | Off / L2-held / Always / Touch-enables / Ratchet | Off | When motion aiming is active (see below) |
 | Sensitivity | 1–100 | 50 | Motion-to-stick gain (50 ≈ raw) |
 | Vertical sensitivity | 0–100 | 0 (same as above) | Vertical gain on its own — usually lower, since a game's vertical aiming range is much smaller |
-| Horizontal source | Yaw / Roll | Yaw | Yaw = turn the controller; Roll = tilt it sideways |
+| Horizontal source | Yaw / Roll / Player space | Yaw | Yaw = turn the controller; Roll = tilt it sideways; **Player space** works out which way is down from the accelerometer and follows how you actually hold it — see below |
 | Invert gyro aim | X / Y / both | off | Per-axis inversion (bit0 = X, bit1 = Y) |
 | Gyro output | Right stick / Mouse / Mouse + Flick Stick | Right stick | What the motion drives — see below |
 | Flick Stick — mouse counts per 360° | 500–50000 | 6500 | Calibration, Flick Stick only |
@@ -1195,6 +1195,31 @@ back twice is easier to judge than once — you should land exactly where you be
 > converts an angle into a fixed number of counts and assumes the game turns a
 > fixed amount per count; with acceleration, no single calibration value can be
 > correct. Changing the game's own sensitivity also means recalibrating.
+
+#### Player space *(new in 1.38.2)*
+
+Yaw and Roll each assume a particular grip. Turning the controller drives the aim
+only while the pad is roughly flat; tilting it sideways only while it is roughly
+upright. Hold it any other way and part of the movement lands on the wrong axis —
+a level left-right sweep starts dragging the cursor diagonally, and with the pad
+on its edge it barely turns the view at all. That is why picking an axis also
+means committing to a grip.
+
+**Player space** reads gravity from the accelerometer to work out which way is
+down, then measures how much your movement turned you about the world's vertical
+axis. Flat, tilted up, rolled onto its edge — the aim behaves the same. Vertical
+aim is corrected the same way, so it stays vertical instead of picking up part of
+a horizontal turn.
+
+Gravity is low-passed, so a knock does not throw the aim, and it falls back to
+plain yaw if the reading is not sane gravity (a hard shake, or free fall).
+
+To see the difference: aim with the pad flat, then roll it 45° sideways and make
+the same movement. On Yaw the cursor goes diagonal; on Player space it does not
+change. Roll it a full 90° and Yaw stops turning the view horizontally almost
+entirely, while Player space is unaffected.
+
+Yaw and Roll are unchanged and Yaw remains the default.
 
 ### Right Stick Inversion
 Inverts the physical right stick in the input report the PC sees — independent of
@@ -1913,9 +1938,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.37.2.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.37.2)
-- `ds5-v1.37.2-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.38.2.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.38.2)
+- `ds5-v1.38.2-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

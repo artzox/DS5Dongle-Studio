@@ -297,7 +297,7 @@ const SECTIONS = [
   { title: 'Gyro Aiming', fields: [
     [0x2f,'gyro_mode','u8','Mode','select',[[0,'Off'],[2,'Always on'],[1,'Only while L2 (aim) held'],[5,'Only while R2 (fire) held'],[6,'Only while L1 held'],[7,'Only while R1 held'],[3,'Only while touchpad touched'],[4,'Always on — touch touchpad to pause (ratchet)']]],
     [0x30,'gyro_sens','u8','Sensitivity','number',[1,100]],
-    [0x31,'gyro_axis','u8','Horizontal source','select',{0:'Yaw (turn controller)',1:'Roll (tilt sideways)'}],
+    [0x31,'gyro_axis','u8','Horizontal source','select',{0:'Yaw (turn controller)',1:'Roll (tilt sideways)',2:'Player space (follows how you hold it)'}],
     [0x32,'gyro_invert','u8','Invert gyro aim','bits',['X (horizontal)','Y (vertical)']],
     [0x75,'gyro_sens_y','u8','Vertical sensitivity (0 = same as Sensitivity)','number',[0,100]],
     [0x73,'gyro_output','u8','Gyro output','select',{0:'Right stick (works everywhere)',1:'Mouse (finer aim; needs the pad hidden in most games)',2:'Mouse + Flick Stick (right stick flicks to a bearing)'}],
@@ -435,7 +435,7 @@ const DESCRIPTIONS = {
   // Gyro Aiming
   gyro_mode: "When gyro aiming is active - off, always, or only while a chosen button is held.",
   gyro_sens: "How much aim movement the gyro produces.",
-  gyro_axis: "Whether turning or tilting the controller drives horizontal aim.",
+  gyro_axis: "Whether turning or tilting the controller drives horizontal aim. \u201cPlayer space\u201d uses the accelerometer to work out which way is down and combines both, so the aim behaves the same whether the pad is held flat or tilted up \u2014 no need to pick an axis and then hold the controller a fixed way.",
   gyro_sens_mode: "Manual is the original slider: a number with no real-world meaning, retuned per game. Natural makes it a RATIO - at 1.0x, rotating the controller 10 degrees turns the view 10 degrees - so one setting is correct in every game that shares the same counts per 360. Natural needs the counts per 360 value below to be right, and applies to gyro-to-MOUSE only: gyro-to-stick tells the game how FAST to turn, not how far, so a rotation ratio has nothing to attach to there.",
   gyro_natural_x10: "The ratio, x10. 10 means 1:1 - the view turns exactly as far as you rotate the pad. Most people play between 25 (2.5x) and 120 (12x), higher the less they rely on the stick. To check it is truly 1:1 on your hardware, use the degrees readout in the Device tab: rotate through a known angle and compare.",
   gyro_natural_y_x10: "Vertical ratio, x10. 0 follows the horizontal one. A game's vertical aiming range is much smaller than its horizontal one, so a lower value here is common.",
@@ -2633,6 +2633,14 @@ async function readDiag(){
     if (rssi > 127) rssi -= 256;
     let gy = null, sy = null, c01 = null, c23 = null;
     try { gy = await readField(0x35, 'u16'); sy = await readField(0x36, 'u8'); } catch(e) {}
+    // Raw accelerometer. At rest one axis reads about +/-8000 (gravity) and the
+    // other two near zero - which axis it is tells you the mapping, and the sign
+    // tells you the orientation. Worth having visible: the wiki's axis names
+    // were already wrong once about which byte carries yaw.
+    let axv = null, ayv = null, azv = null;
+    try {
+      axv = await readField(0xa8, 'u16'); ayv = await readField(0xa9, 'u16'); azv = await readField(0xaa, 'u16');
+    } catch(e) {}
     try { c01 = await readField(0x37, 'u16'); c23 = await readField(0x38, 'u16'); } catch(e) {}
     let ke = null;
     try { ke = await readField(0x3c, 'u8'); } catch(e) {}
@@ -2646,7 +2654,7 @@ async function readDiag(){
     // meters 0x69-0x6b now live on the Haptics tab, read by readAhMeter().)
     let bat = null;
     try { bat = await readField(0x68, 'u8'); } catch(e) {}
-    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat};
+    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat, axv, ayv, azv};
   } catch(e){ return {br:'err', ch:'err', rssi:null, gy:null, sy:null, c01:null, c23:null, ke:null, rl:null, rr:null, rf:null, bat:null}; }
 }
 function rssiLabel(r){
@@ -2714,6 +2722,11 @@ async function refreshDiag(){
     // they describe and beside the live test that corroborates them. Reading
     // "hiding L3" here while the macro row sat on another tab meant holding the
     // two halves of the diagnosis in your head; see macroLivePanelHTML().
+    if (d.axv !== null && d.axv !== undefined) {
+      const sgn = v => (v > 32767 ? v - 65536 : v);
+      extra += `<br>Accelerometer: X ${sgn(d.axv)}  Y ${sgn(d.ayv)}  Z ${sgn(d.azv)}` +
+               `  (at rest one axis sits near \u00b18000 \u2014 that is gravity, and it is what "player space" uses to work out which way is down)`;
+    }
     if (d.rl !== null && d.rl !== undefined) {
       const rq = [];
       if (d.rf & 1) rq.push('EnableRumbleEmulation');
@@ -5573,7 +5586,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.37.2</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.38.2</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>

@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here.
 
+## [1.38.2] — 2026-08-29
+
+### Added
+
+- **Player space gyro aiming.** *Horizontal source* on the Gyro tab gains a third
+  option beside Yaw and Roll. Yaw and Roll each assume you hold the controller a
+  particular way: turning the pad drives the aim only while it is roughly flat,
+  and tilting it sideways only while it is roughly upright. Hold it any other way
+  and part of your movement lands on the wrong axis — a level sweep starts
+  dragging the cursor diagonally, and at 90° it barely turns the view at all.
+
+  Player space uses the **accelerometer** to work out which way is down, then
+  asks the question that actually matters: how much did that movement turn you
+  about the world's vertical axis? Flat, tilted, rolled onto its edge — the aim
+  behaves the same, and there is no axis to choose and then hold the controller
+  to suit.
+
+  Both axes are corrected, so vertical aim stays vertical when the pad is tilted
+  rather than picking up part of a horizontal turn. Gravity is low-passed, so a
+  knock does not throw the aim, and it falls back to plain yaw if the reading is
+  not sane gravity — during a hard shake or free fall.
+
+  Yaw and Roll are unchanged and remain the default.
+
+- **Live accelerometer readout** in the Device tab diagnostics: raw X, Y and Z.
+  At rest one axis sits near ±8000, which is gravity. It is what player space
+  reads, and it is the fastest way to confirm the sensor is being decoded
+  correctly on a given controller.
+
 ## [1.37.2] — 2026-08-28
 
 ### Added
