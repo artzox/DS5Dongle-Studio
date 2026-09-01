@@ -349,6 +349,15 @@ volatile uint16_t g_diag_gyro = 0; // |horizontal gyro raw|, field 0x35
 // of player-space aim can be checked against a real controller instead of
 // trusting the wiki - which was already wrong once about which byte is yaw.
 volatile int16_t g_diag_ax = 0, g_diag_ay = 0, g_diag_az = 0;
+// Tilt steering, instrumented. Three numbers answer the whole chain: is the
+// block running at all (ran), what roll did it compute (deg), and what did it
+// actually add to the stick (add). Shipping another guess without these was the
+// wrong call twice over.
+volatile int16_t g_diag_tilt_deg = 0;
+volatile int16_t g_diag_tilt_add = 0;
+volatile int16_t g_diag_tilt_ydeg = 0;
+volatile int16_t g_diag_tilt_yadd = 0;
+volatile uint8_t g_diag_tilt_ran = 0;   // 0 off, 1 running, 2 gravity rejected
 
 // --- gyro as a mouse -------------------------------------------------------
 //
@@ -946,6 +955,94 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
         g_tm_down = f.down;
     }
 
+    // Accelerometer work runs BEFORE the gyro early-return below. Tilt steering
+    // has nothing to do with gyro aiming and a racing profile is exactly where
+    // gyro is switched off - leaving it down there meant the feature could never
+    // run in the only situation it exists for.
+    auto rd_i16 = [&](int off) -> int32_t {
+        return (int16_t)((uint16_t)d[off] | ((uint16_t)d[off + 1] << 8));
+    };
+    // ACCELEROMETER: bytes 21/23/25, immediately after the three gyro axes.
+    // At rest it reads gravity, which is what makes it useful - it tells us
+    // which way is DOWN, something the gyro alone can never know.
+    const int32_t ax = rd_i16(21), ay = rd_i16(23), az = rd_i16(25);
+    { extern volatile int16_t g_diag_ax, g_diag_ay, g_diag_az;
+      g_diag_ax = (int16_t) ax; g_diag_ay = (int16_t) ay; g_diag_az = (int16_t) az; }
+
+    // Gravity, low-passed out of the accelerometer. Shared by player-space aim
+    // and tilt steering - both need to know which way is down, and filtering it
+    // twice would be two filters drifting apart.
+    static float gvx = 0.0f, gvy = 0.0f, gvz = 0.0f;
+    if (cfg.gyro_axis == 2 || cfg.tilt_steer) {
+        constexpr float A = 0.02f;                 // ~1s settle at report rate
+        gvx += A * ((float) ax - gvx);
+        gvy += A * ((float) ay - gvy);
+        gvz += A * ((float) az - gvz);
+    }
+
+    // --- Tilt steering ------------------------------------------------------
+    // Roll the pad like a small wheel and it ADDS to the left stick's X. It does
+    // not replace it: at full lock there is nothing left to add, and with the
+    // stick centred the offset falls inside the game's own dead zone, so driving
+    // straight does not wander. What is left is the middle of the range, which
+    // is exactly where a stick is hardest to be precise with.
+    if (cfg.tilt_steer) {
+        extern volatile int16_t g_diag_tilt_deg, g_diag_tilt_add;
+        extern volatile uint8_t g_diag_tilt_ran;
+        const float mag = sqrtf(gvx * gvx + gvy * gvy + gvz * gvz);
+        g_diag_tilt_ran = (mag > 1000.0f) ? 1 : 2;
+        if (mag <= 1000.0f) { g_diag_tilt_deg = 0; g_diag_tilt_add = 0; }
+        if (mag > 1000.0f) {
+            // Roll from gravity. Flat reads 0; rolling sideways swings gravity
+            // from the down axis into the lateral one. Absolute, from gravity,
+            // so it never drifts and always returns to centre when levelled -
+            // which integrating the gyro for an angle could not do.
+            // Negated: hardware testing showed the raw sign steers the wrong
+            // way, so the DEFAULT has to be the correct one and "Invert" has to
+            // mean inverted. Shipping it the other way round makes every new
+            // user tick a box to get the obvious behaviour.
+            float deg = -atan2f(gvx, gvy) * 57.2957795f;
+            if (cfg.tilt_steer_invert) deg = -deg;
+            const float dz = (float) cfg.tilt_steer_deadzone;
+            if (deg > dz)       deg -= dz;
+            else if (deg < -dz) deg += dz;
+            else                deg = 0.0f;
+            const float range = (float) cfg.tilt_steer_range;
+            float f = deg / (range > 1.0f ? range : 1.0f);
+            if (f > 1.0f) f = 1.0f; else if (f < -1.0f) f = -1.0f;
+            const int32_t add = (int32_t) (f * 127.0f * ((float) cfg.tilt_steer_amount / 100.0f));
+            g_diag_tilt_deg = (int16_t) deg;
+            g_diag_tilt_add = (int16_t) add;
+            int32_t v = (int32_t) d[0] + add;
+            if (v < 0) v = 0; else if (v > 255) v = 255;
+            d[0] = (uint8_t) v;
+
+            // VERTICAL tilt, its own switch. Leaning the pad forward and back
+            // is what a bike wants for weight shift; a car does not, so this
+            // cannot ride along with the horizontal axis. Range and dead zone
+            // are shared - the wrist movement is the same size either way - but
+            // the amount is separate, because how much lean a game wants is not
+            // how much steering it wants.
+            if (cfg.tilt_steer_y) {
+                extern volatile int16_t g_diag_tilt_ydeg, g_diag_tilt_yadd;
+                float ydeg = -atan2f(gvz, gvy) * 57.2957795f;
+                if (cfg.tilt_steer_y_invert) ydeg = -ydeg;
+                if (ydeg > dz)       ydeg -= dz;
+                else if (ydeg < -dz) ydeg += dz;
+                else                 ydeg = 0.0f;
+                float yf = ydeg / (range > 1.0f ? range : 1.0f);
+                if (yf > 1.0f) yf = 1.0f; else if (yf < -1.0f) yf = -1.0f;
+                const int32_t yadd = (int32_t) (yf * 127.0f * ((float) cfg.tilt_steer_y_amount / 100.0f));
+                g_diag_tilt_ydeg = (int16_t) ydeg;
+                g_diag_tilt_yadd = (int16_t) yadd;
+                int32_t vy = (int32_t) d[1] + yadd;
+                if (vy < 0) vy = 0; else if (vy > 255) vy = 255;
+                d[1] = (uint8_t) vy;
+            }
+        }
+    }
+
+
     if (cfg.gyro_mode == 0) return;
     // Activation schemes (industry set: ADS-gated, always-on, touch-enable, ratchet):
     //   1 = only while L2 (aim) held past ~12%
@@ -975,13 +1072,6 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
     // as the wiki field names suggested — user testing showed 19 gives no
     // horizontal response while 17 tracks turning. So: yaw = 17, roll = 19.
     int32_t horiz;
-    // ACCELEROMETER: bytes 21/23/25, immediately after the three gyro axes.
-    // At rest it reads gravity, which is what makes it useful - it tells us
-    // which way is DOWN, something the gyro alone can never know.
-    const int32_t ax = rd16(21), ay = rd16(23), az = rd16(25);
-    { extern volatile int16_t g_diag_ax, g_diag_ay, g_diag_az;
-      g_diag_ax = (int16_t) ax; g_diag_ay = (int16_t) ay; g_diag_az = (int16_t) az; }
-
     if (cfg.gyro_axis == 2) {
         // PLAYER SPACE. Yaw and roll both turn the view horizontally, and which
         // one does the work depends entirely on how far the pad is tilted -
@@ -994,11 +1084,7 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
         // Gravity is low-passed out of the accelerometer: a shake is transient,
         // gravity is not, and steering off raw acceleration would make the aim
         // jump every time the pad is knocked.
-        static float gx = 0.0f, gy = 0.0f, gz = 0.0f;
-        constexpr float A = 0.02f;                 // ~1s settle at report rate
-        gx += A * ((float) ax - gx);
-        gy += A * ((float) ay - gy);
-        gz += A * ((float) az - gz);
+        const float gx = gvx, gy = gvy, gz = gvz;
         const float mag = sqrtf(gx * gx + gy * gy + gz * gz);
         if (mag > 1000.0f) {                       // sane gravity, not free-fall
             const float ux = gx / mag, uy = gy / mag, uz = gz / mag;

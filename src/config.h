@@ -366,6 +366,22 @@ struct __attribute__((packed)) Config_body {
     uint8_t  touch_mouse_invert;     // bit0 X, bit1 Y
     uint8_t  touch_mouse_trackball;  // 0 off, 1 = keep gliding after release
     uint8_t  touch_mouse_friction;   // how fast the glide decays, higher = stops sooner
+    // ---- Tilt steering (appended 1.39.0) ----
+    // ADDS to the left stick rather than replacing it: coarse steering stays on
+    // the stick, where it is precise, and tilt supplies fine trim on top. Tilt
+    // alone was tried in the SIXAXIS era and the consistent verdict was that it
+    // is not precise enough to steer with; as an offset it does not have to be.
+    uint8_t  tilt_steer;             // 0 off, 1 on
+    uint8_t  tilt_steer_range;       // degrees of roll that reach full contribution
+    uint8_t  tilt_steer_amount;      // max stick percentage tilt may add
+    uint8_t  tilt_steer_deadzone;    // degrees around neutral that do nothing
+    uint8_t  tilt_steer_invert;      // 0/1
+    // Vertical tilt, separately switchable. Leaning the pad forward and back
+    // adds to the left stick's Y - what a bike wants and a car does not, so it
+    // must not ride along with the horizontal axis.
+    uint8_t  tilt_steer_y;           // 0 off, 1 on
+    uint8_t  tilt_steer_y_amount;    // max stick percentage, own value
+    uint8_t  tilt_steer_y_invert;    // 0/1
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so

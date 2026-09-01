@@ -143,6 +143,17 @@ void config_valid() {
     // trusted - 0xFF blinks would flash for eight minutes.
     if (body->batt_notify_enable > 1) body->batt_notify_enable = 0;
     if (body->touch_mouse > 1) body->touch_mouse = 0;
+    if (body->tilt_steer > 1) body->tilt_steer = 0;
+    if (body->tilt_steer_range == 0 || body->tilt_steer_range > 90) body->tilt_steer_range = 45;
+    // 70, not 25. At 25 the offset never clears a racing game's own steering
+    // dead zone, so the feature looked broken while working exactly as written.
+    // Below roughly 60 nothing of consequence happens.
+    if (body->tilt_steer_amount > 100) body->tilt_steer_amount = 70;
+    if (body->tilt_steer_deadzone > 30) body->tilt_steer_deadzone = 3;
+    if (body->tilt_steer_invert > 1) body->tilt_steer_invert = 0;
+    if (body->tilt_steer_y > 1) body->tilt_steer_y = 0;
+    if (body->tilt_steer_y_amount > 100) body->tilt_steer_y_amount = 70;
+    if (body->tilt_steer_y_invert > 1) body->tilt_steer_y_invert = 0;
     if (body->touch_mouse_sens == 0 || body->touch_mouse_sens > 250) body->touch_mouse_sens = 100;
     if (body->touch_mouse_min > 20) body->touch_mouse_min = 1;
     if (body->touch_mouse_invert > 3) body->touch_mouse_invert = 0;
