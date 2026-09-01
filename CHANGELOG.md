@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ## [1.39.5] — 2026-08-29
 
+### Fixed
+
+- **Lean snapped between its extremes when the controller was rolled hard over.**
+  Each tilt angle was measured against one other axis rather than against the
+  combined magnitude of both, which let the two contaminate each other. A genuine
+  20° lean read as 27° at 45° of roll and 87° at 89°, and one degree past vertical
+  it inverted outright — so at full steering lock, leaning forward or back jumped
+  straight from one end of the stick to the other with nothing in between.
+
+  Both axes now use the tilt-compensated form. It is identical whenever the other
+  axis is level, so normal use is unchanged; it only stops the collapse at the
+  edges, and removes the inflation that was quietly present at every angle in
+  between.
+
+## [1.39.4] — 2026-08-29
+
 ### Added
 
 - **Tilt steering.** Roll the controller like a small wheel and it **adds** to the
@@ -37,14 +53,6 @@ All notable changes to this project are documented here.
   to clear the game's dead zone — all look identical from the outside, and this
   line separates them. Calibrate with the live test on the Macros tab, which
   shows the stick value the game actually receives.
-
-  Both angles are measured against the combined magnitude of the other two axes
-  rather than against a single one. Comparing lean against one axis alone let the
-  two contaminate each other: a genuine 20° lean read as 27° at 45° of roll and
-  87° at 89°, and one degree past vertical it inverted outright, so lean snapped
-  between its extremes with nothing in between. The corrected form is identical
-  whenever the other axis is level, so it changes nothing in normal use and only
-  stops the collapse at the edges.
 
 ## [1.38.2] — 2026-08-29
 
