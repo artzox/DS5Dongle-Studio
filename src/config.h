@@ -382,6 +382,12 @@ struct __attribute__((packed)) Config_body {
     uint8_t  tilt_steer_y;           // 0 off, 1 on
     uint8_t  tilt_steer_y_amount;    // max stick percentage, own value
     uint8_t  tilt_steer_y_invert;    // 0/1
+    // Degrees a full sideways flick turns. Flick Stick is absolute by design -
+    // push right and you face right, 90 degrees - which is exactly what makes
+    // smaller checks impossible. This scales the flick so a full sideways push
+    // turns by this much instead, keeping the direction meaningful while making
+    // the amount yours. 90 is the unscaled original.
+    uint8_t  flick_angle;            // degrees for a 90-degree stick push, 1-180
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so

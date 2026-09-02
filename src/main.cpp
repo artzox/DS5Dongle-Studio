@@ -637,14 +637,22 @@ static float flick_stick_step(float sx, float sy, float dt) {
     const float len     = sqrtf(sx * sx + sy * sy);
     const float lastLen = sqrtf(g_fs_last_x * g_fs_last_x + g_fs_last_y * g_fs_last_y);
 
+    // Scale a full sideways push to the configured angle. Unscaled, Flick Stick
+    // is absolute: push right and you turn 90 degrees, which is the whole reason
+    // a smaller check is impossible. Applied to the TURN as well as the flick -
+    // scaling only the flick would let a rotation of the held stick undo it at a
+    // different rate, so the view would not come back to where it started.
+    const Config_body &fcfg = get_config();
+    const float fscale = (float) (fcfg.flick_angle ? fcfg.flick_angle : 90) / 90.0f;
+
     if (len >= FLICK_THRESHOLD) {
         if (lastLen < FLICK_THRESHOLD) {
             g_fs_progress = 0.0f;                    // flick start
-            g_fs_size = atan2f(-sx, sy);             // angle from forward
+            g_fs_size = atan2f(-sx, sy) * fscale;    // angle from forward, scaled
         } else {
             const float a  = atan2f(-sx, sy);
             const float la = atan2f(-g_fs_last_x, g_fs_last_y);
-            result += flick_tiered(wrap_pi(a - la));  // turn
+            result += flick_tiered(wrap_pi(a - la)) * fscale;  // turn
         }
     } else if (lastLen >= FLICK_THRESHOLD) {
         flick_zero_smoothing();                      // released: drop the tail

@@ -154,6 +154,7 @@ void config_valid() {
     if (body->tilt_steer_y > 1) body->tilt_steer_y = 0;
     if (body->tilt_steer_y_amount > 100) body->tilt_steer_y_amount = 70;
     if (body->tilt_steer_y_invert > 1) body->tilt_steer_y_invert = 0;
+    if (body->flick_angle == 0 || body->flick_angle > 180) body->flick_angle = 90;
     if (body->touch_mouse_sens == 0 || body->touch_mouse_sens > 250) body->touch_mouse_sens = 100;
     if (body->touch_mouse_min > 20) body->touch_mouse_min = 1;
     if (body->touch_mouse_invert > 3) body->touch_mouse_invert = 0;
