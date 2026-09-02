@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## [1.40.0] — 2026-08-30
+
+### Added
+
+- **Flick turn angle.** Flick Stick is absolute by design: push the right stick
+  right and you face right, ninety degrees, because the stick's direction *is*
+  the bearing. That is what makes it precise, and also what makes a smaller
+  correction impossible — there is no setting for "turn a bit", only for where
+  to end up.
+
+  This scales the flick. At 45 a full sideways push turns 45° instead of 90°, so
+  the direction still means something while the amount is yours. 90 is the
+  original behaviour.
+
+  It scales rotating a held stick by the same factor, not just the initial
+  flick. Scaling only the flick would let the turn back happen at a different
+  rate, and the view would not return to where it started.
+
+  On the Gyro tab, beside *Mouse counts per 360°*. Needs Flick Stick enabled;
+  it changes how Flick Stick behaves rather than adding a separate mode.
+
 ## [1.39.5] — 2026-08-29
 
 ### Fixed

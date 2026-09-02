@@ -311,6 +311,7 @@ const SECTIONS = [
     [0x32,'gyro_invert','u8','Invert gyro aim','bits',['X (horizontal)','Y (vertical)']],
     [0x75,'gyro_sens_y','u8','Vertical sensitivity (0 = same as Sensitivity)','number',[0,100]],
     [0x73,'gyro_output','u8','Gyro output','select',{0:'Right stick (works everywhere)',1:'Mouse (finer aim; needs the pad hidden in most games)',2:'Mouse + Flick Stick (right stick flicks to a bearing)'}],
+    [0xb8,'flick_angle','u8','Flick turn angle (degrees)','number',[1,180]],
     [0x74,'flick_counts_360','u16','Mouse counts per 360° (Flick Stick and Natural sensitivity)','number',[500,50000]],
     [0x80,'gyro_sens_mode','u8','Gyro sensitivity scale','select',{0:'Manual — tune by feel, no calibration needed',1:'Natural — real-world ratio (default; needs counts per 360°)'}],
     [0x81,'gyro_natural_x10','u8','Natural multiplier ×10 (10 = 1:1, 25 = 2.5×)','number',[5,200]],
@@ -457,6 +458,7 @@ const DESCRIPTIONS = {
   gyro_sens_mode: "Manual is the original slider: a number with no real-world meaning, retuned per game. Natural makes it a RATIO - at 1.0x, rotating the controller 10 degrees turns the view 10 degrees - so one setting is correct in every game that shares the same counts per 360. Natural needs the counts per 360 value below to be right, and applies to gyro-to-MOUSE only: gyro-to-stick tells the game how FAST to turn, not how far, so a rotation ratio has nothing to attach to there.",
   gyro_natural_x10: "The ratio, x10. 10 means 1:1 - the view turns exactly as far as you rotate the pad. Most people play between 25 (2.5x) and 120 (12x), higher the less they rely on the stick. To check it is truly 1:1 on your hardware, use the degrees readout in the Device tab: rotate through a known angle and compare.",
   gyro_natural_y_x10: "Vertical ratio, x10. 0 follows the horizontal one. A game's vertical aiming range is much smaller than its horizontal one, so a lower value here is common.",
+  flick_angle: "How far a full sideways flick turns the view. Flick Stick is absolute by design \u2014 push right and you face right, 90\u00b0 \u2014 which is what makes a smaller check impossible. This scales it, so the direction still means something while the amount is yours. 90 is the original behaviour; 45 turns half as far for the same stick push. It scales rotating a held stick by the same factor, so a flick and the turn back stay consistent.",
   flick_counts_360: "How far a flick turns you, in this game. It is the same number a real mouse needs to spin a full 360 degrees: (cm per 360) x (DPI / 2.54). If you know your cm/360 and DPI, just calculate it - no trial needed. Otherwise leave 6500 and correct once: flick fully back (a 180), see how far you actually turned, then multiply this value by 180 / the degrees you got. Two tries is usually enough. Turn mouse acceleration OFF and raw input ON, or no single value can be correct. Changing the game's own sensitivity means recalibrating.",
   gyro_sens_y: "Vertical gyro sensitivity on its own. Leave at 0 and both axes use the Sensitivity setting above, exactly as before. A lower value here is the usual choice: the vertical aiming range in a game is far smaller than the horizontal one, so the gain that feels right for turning is often too fast for looking up and down.",
   gyro_output: "Right stick works in any game with no setup. Mouse sends pointer movement instead, which is what a gyro naturally produces - finer at low speed and it never pegs on a fast turn - but many games ignore mouse input while a gamepad is present, so it usually needs the pad hidden. Changing this re-enumerates the controller.",
@@ -5623,7 +5625,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.39.5</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.40.0</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
