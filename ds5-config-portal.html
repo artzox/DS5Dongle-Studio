@@ -4669,6 +4669,21 @@ function macroDiagHTML(d){
     return '<span style="color:var(--sub)">Connect to see what the macro engine is doing.</span>';
   const sup = ((d.supHi << 16) >>> 0) | d.supLo;
   const inj = ((d.injHi << 16) >>> 0) | d.injLo;
+  // g_inject is NOT a chord mask. Suppression uses the logical button bits, so
+  // macroChordName() reads it correctly - but injection is built as
+  // 1 << (out_btn - 1), indexed by the OUTPUT enum, which is the same ordering
+  // as MACRO_OUT_BTNS. Decoding it with the chord table named every button
+  // wrongly: Triangle (output 4) sets bit 3, which the chord table calls D-pad
+  // right. Two masks that look alike and mean different things.
+  const injNames = m => {
+    const out = [];
+    for (let b = 0; b < 32; b++) {
+      if (!(m & (1 << b))) continue;
+      const v = b + 1;
+      out.push(MACRO_OUT_BTNS[v] || ('output ' + v));
+    }
+    return out.join(' + ');
+  };
   const names = m => macroChordName(m) || 'none';
   // A stick macro hides its stick through separate flags, not the button mask,
   // so both have to be reported or a working stick remap reads as "nothing
@@ -4684,7 +4699,7 @@ function macroDiagHTML(d){
   const mBtns = ((d.kbOut || 0) >> 4) & 0x0F;
   const key1  = ((d.kbOut || 0) >> 8) & 0xFF;
   const out = [];
-  if (inj) out.push('buttons: ' + (names(inj) || inj));
+  if (inj) out.push('buttons: ' + (injNames(inj) || inj));
   if (nKeys) out.push(nKeys + ' key' + (nKeys > 1 ? 's' : '') + ' held' + (key1 ? ' (first usage 0x' + key1.toString(16) + ')' : ''));
   if (mBtns) out.push('mouse buttons 0x' + mBtns.toString(16));
   let h = 'Hiding <b>' + (hid.length ? hid.join(' + ') : 'nothing') + '</b>, sending <b>' +
