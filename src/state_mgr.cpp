@@ -189,7 +189,11 @@ bool player_led_wants_report(void) {
     const uint8_t mode = get_config().player_led_mode;
     if (s_prev_mode != 0 && mode == 0) player_led_tail_until_us = time_us_64() + 300000;
     s_prev_mode = mode;
-    return mode != 0 || time_us_64() < player_led_tail_until_us;
+    // A dimmed Passthrough also needs reports composed: on an idle desktop no
+    // game is sending any, so a brightness change would otherwise never reach
+    // the controller until something else happened to write to it.
+    return mode != 0 || get_config().player_led_bright != 0 ||
+           time_us_64() < player_led_tail_until_us;
 }
 
 void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
@@ -244,6 +248,18 @@ void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
             data[1]  |= 0x10;                                  // AllowPlayerIndicators
             data[43]  = (uint8_t) ((data[43] & 0x1F) | 0x20);  // the game's own pattern, instant
         }
+    }
+
+    // Brightness in PASSTHROUGH. Passthrough leaves the pattern to the game, but
+    // a brightness the user chose has to survive the game too - otherwise every
+    // report the game sends carries its own brightness, and the LEDs snap back
+    // to bright the moment a game starts or changes it. Only the brightness
+    // field is touched here, under its own allow-flag, so the game's player
+    // number is still shown exactly as it asked. "Bright" means hands off
+    // entirely: that is the controller's default, so nothing needs enforcing.
+    if (get_config().player_led_mode == 0 && get_config().player_led_bright != 0 && size > 42) {
+        data[38] |= 0x01;                            // AllowLightBrightnessChange
+        data[42]  = get_config().player_led_bright;  // 1 mid, 2 dim
     }
 
     if (get_config().player_led_mode != 0 && size > 43) {
