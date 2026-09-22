@@ -2,6 +2,56 @@
 
 All notable changes to this project are documented here.
 
+## [1.41.6] — 2026-09-22
+
+### Added
+
+- **Player LEDs.** The five white LEDs under the touchpad normally show a player
+  number, which on a single-player PC tells you nothing. A new setting on the
+  Device tab, beside *Lightbar Off*, takes them over:
+
+  - **Passthrough** — the default. Left to the game and the controller, as
+    before.
+  - **Off** — all five dark.
+  - **Battery gauge** — a bar filled from the left, one LED per 20%. A bar is
+    read by its length at a glance; a single lit LED moving along the strip
+    has to be found and counted first. While **charging**, the filled LEDs stay
+    solid and the next one up pulses, locking solid as each threshold is
+    reached. **Below 20%** the first LED blinks alone — unmistakable against
+    charging, because nothing else is lit, and at a faster rate so a glance
+    tells them apart without context.
+
+  The thresholds are the same wherever the gauge starts: a change is shown once
+  the new reading has held for five seconds, so a charge hovering on a boundary
+  cannot make an LED flicker, while a genuine step still appears promptly.
+
+  **Player LED brightness** (Bright / Mid / Dim) applies whichever mode is
+  selected, independently of the lightbar.
+
+  The gauge complements the lightbar battery notification rather than replacing
+  it: the strip is something you look at to see how much is left; the lightbar
+  pulse is a prompt that finds you when it is time to act.
+
+  Taking over the LEDs means the game can no longer show a player number. On a
+  DualSense Edge the gauge works alongside the controller's own on-board profile
+  display. Later standard DualSense hardware revisions are documented as
+  supporting only *mirrored* player-LED patterns, so on those a left-to-right
+  bar may render symmetrically — reports welcome.
+
+  The Device tab diagnostics show every link of the chain on one line: the mode
+  as the firmware sees it, whether the code is running, the battery byte it is
+  reading, and the pattern being sent.
+
+### Fixed
+
+- **The *Macro engine, per tick* readout named injected controller buttons
+  wrongly.** It reported the buttons a macro was *hiding* correctly but gave the
+  wrong name for the ones it was *sending*. The two masks look alike and mean
+  different things: suppression uses the logical button bits, while injection is
+  indexed by the output list — so decoding both the same way turned Triangle into
+  "D-pad right". Diagnostic only: macros themselves always behaved correctly, and
+  the live-test pad was always right because it reads the real report.
+
 ## [1.40.0] — 2026-08-30
 
 ### Added

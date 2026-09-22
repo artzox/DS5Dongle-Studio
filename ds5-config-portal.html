@@ -208,6 +208,8 @@ const SECTIONS = [
     [0x07,'disable_inactive_disconnect','u8','Disable Inactive Disconnect','bool'],
     [0x08,'disable_pico_led','u8','Disable Pico LED','bool'],
     [0x19,'lightbar_off','u8','Lightbar Off','bool'],
+    [0xb9,'player_led_mode','u8','Player LEDs','select',{0:'Passthrough',1:'Off',2:'Battery gauge'}],
+    [0xba,'player_led_bright','u8','Player LED brightness','select',{0:'Bright',1:'Mid',2:'Dim'}],
     [0x11,'enable_wake','u8','Wake PC on PS Button','bool'],
   ]},
   { title: 'Battery Notification', fields: [
@@ -372,6 +374,8 @@ const DESCRIPTIONS = {
   touch_mouse_invert: "Flip the pointer direction on either axis.",
   touch_mouse_trackball: "Keep the pointer gliding after you lift your finger, so a flick can cross a large screen without repeated drags.",
   touch_mouse_friction: "How quickly the glide slows down. Higher stops sooner.",
+  player_led_mode: "The five white LEDs under the touchpad. Normally they show a player number, which on a single-player PC tells you nothing. \u201cPassthrough\u201d leaves them to the game and controller; \u201cOff\u201d turns them off; \u201cBattery gauge\u201d fills one LED per 20% from the left, pulses the next one up while charging, and blinks the first alone below 20%. Taking them over means the game can no longer show a player number. On a DualSense Edge the controller also drives these for its on-board profiles \u2014 whether a profile change overrides the gauge is not yet known.",
+  player_led_bright: "How bright the player LEDs are. Applies whichever mode is selected, and works independently of the lightbar.",
   lightbar_off: "Keeps the controller's lightbar dark, in every haptics mode. A battery notification still overrides it for the seconds it runs.",
   rumble_haptic_strength: "Strength of a game's rumble re-created on the actuators when it can't be handed to native rumble.",
   effect_leak_volume: "How loudly sharp one-off sounds leak to the speaker while it's muted.",
@@ -2653,6 +2657,14 @@ async function readDiag(){
     if (rssi > 127) rssi -= 256;
     let gy = null, sy = null, c01 = null, c23 = null;
     try { gy = await readField(0x35, 'u16'); sy = await readField(0x36, 'u8'); } catch(e) {}
+    // Player LEDs: the pattern being written and the state that produced it. On
+    // an Edge the controller drives these itself, so seeing what WE send is the
+    // only way to tell "overridden" from "never written".
+    let pledb = null, pleds = null, pledm = null, pledn = null, pledr = null;
+    try {
+      pledb = await readField(0xbb, 'u8'); pleds = await readField(0xbc, 'u8');
+      pledm = await readField(0xbd, 'u8'); pledn = await readField(0xbe, 'u16'); pledr = await readField(0xbf, 'u8');
+    } catch(e) {}
     // Raw accelerometer. At rest one axis reads about +/-8000 (gravity) and the
     // other two near zero - which axis it is tells you the mapping, and the sign
     // tells you the orientation. Worth having visible: the wiki's axis names
@@ -2682,7 +2694,7 @@ async function readDiag(){
     // meters 0x69-0x6b now live on the Haptics tab, read by readAhMeter().)
     let bat = null;
     try { bat = await readField(0x68, 'u8'); } catch(e) {}
-    return {br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat, axv, ayv, azv, tdeg, tadd, tran, tydeg, tyadd};
+    return {pledb, pleds, pledm, pledn, pledr, br, ch, rssi, gy, sy, c01, c23, ke, rl, rr, rf, bat, axv, ayv, azv, tdeg, tadd, tran, tydeg, tyadd};
   } catch(e){ return {br:'err', ch:'err', rssi:null, gy:null, sy:null, c01:null, c23:null, ke:null, rl:null, rr:null, rf:null, bat:null}; }
 }
 function rssiLabel(r){
@@ -2764,6 +2776,22 @@ async function refreshDiag(){
       const sgn = v => (v > 32767 ? v - 65536 : v);
       extra += `<br>Accelerometer: X ${sgn(d.axv)}  Y ${sgn(d.ayv)}  Z ${sgn(d.azv)}` +
                `  (at rest one axis sits near \u00b18000 \u2014 that is gravity, and it is what "player space" uses to work out which way is down)`;
+    }
+    if (d.pledm !== null && d.pledm !== undefined) {
+      // Every link of the chain on one line, in order. Read left to right: the
+      // first thing that looks wrong is where it breaks.
+      const MODE = {0:'passthrough', 1:'off', 2:'battery gauge', 255:'never evaluated'};
+      const pat = [0,1,2,3,4].map(b => (d.pledb & (1 << b)) ? '\u25a0' : '\u25a1').join('');
+      const ST = {0:'discharging', 1:'low', 2:'charging'};
+      const lv = (d.pledr & 0x0F) * 10, pst = (d.pledr >> 4) & 0x0F;
+      extra += `<br>Player LEDs: firmware mode <b>${MODE[d.pledm] ?? d.pledm}</b>` +
+               ` \u00b7 ran <b>${d.pledn}</b> times` +
+               ` \u00b7 battery byte <b>0x${(d.pledr|0).toString(16).padStart(2,'0')}</b> (${lv}%, state ${pst})` +
+               ` \u00b7 sending <b>${pat}</b> (${ST[d.pleds] || '?'})` +
+               `<br><span style="color:var(--sub);font-size:11px">These values should agree with the Battery line above. ` +
+               `A mode of "passthrough" indicates the setting has not reached the firmware; a run count of 0 indicates the code is not executing; ` +
+               `a battery byte that differs from the Battery line indicates incorrect data is being read. ` +
+               `If all three are correct and the LEDs still do not change, the controller is taking precedence over the dongle's output.</span>`;
     }
     if (d.rl !== null && d.rl !== undefined) {
       const rq = [];
@@ -5640,7 +5668,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.40.0</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.41.6</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>

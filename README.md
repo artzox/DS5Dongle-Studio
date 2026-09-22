@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.40.0**
+**Version 1.41.6**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.40.0-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.41.6-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -75,6 +75,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
   - [Battery notification (new in 1.35.0)](#battery-notification-new-in-1350)
+  - [Player LEDs (new in 1.41.6)](#player-leds-new-in-1416)
   - [Advanced — BT Latency (experimental)](#advanced--bt-latency-experimental)
 - [Modes explained](#modes-explained)
 - [Notes & known behavior](#notes--known-behavior)
@@ -279,7 +280,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.40.0.uf2` (Pico 2 W) or `ds5-v1.40.0-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.41.6.uf2` (Pico 2 W) or `ds5-v1.41.6-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -1702,6 +1703,8 @@ the whole configuration is applied in one command.
 | Inactive Time (min) | 5–60 | 30 | Idle timeout before disconnect |
 | Disable Inactive Disconnect | on/off | off | Never auto-disconnect when idle |
 | Lightbar Off | on/off | off | Keeps the controller's lightbar dark in every haptics mode. Since the haptics mode is per profile, "dark in this game, lit in that one" is a matter of using two profiles. A battery notification still overrides this for the seconds it runs. |
+| Player LEDs | Passthrough / Off / Battery gauge | Passthrough | The five white LEDs under the touchpad. See *Player LEDs* below |
+| Player LED brightness | Bright / Mid / Dim | Bright | Applies in any mode, independently of the lightbar |
 | Disable Pico LED | on/off | off | Turn off the Pico's onboard LED |
 | Wake PC on PS Button | on/off | off | Assert USB remote wakeup on PS press to wake the host |
 
@@ -1761,6 +1764,59 @@ straight away so a colour can be judged without draining a controller.
 continuously below 10%. The two suit different distances — the Pico LED when the
 dongle is on the desk in front of you, the lightbar from across the room — and
 most people will want one or the other rather than both.
+
+
+### Player LEDs *(new in 1.41.6)*
+
+The five white LEDs under the touchpad normally show a player number, which on a
+single-player PC tells you nothing. **Player LEDs** on the Device tab takes them
+over:
+
+| Mode | What the LEDs show |
+|---|---|
+| Passthrough | Whatever the game and controller set — the original behaviour |
+| Off | Nothing |
+| Battery gauge | A bar filled from the left, one LED per 20% |
+
+**Reading the battery gauge**
+
+The controller reports its charge in 10% steps, so these are the readings that
+produce each pattern:
+
+| Reported charge | LEDs |
+|---|---|
+| 90–100% | ■■■■■ |
+| 70–80% | ■■■■□ |
+| 50–60% | ■■■□□ |
+| 30–40% | ■■□□□ |
+| 20% and below | ■□□□□, blinking |
+
+A change only shows once the new reading has held for five seconds, so a charge
+that hovers on a boundary does not make an LED flicker. Charge moves by minutes
+per step, so the delay is not noticeable.
+
+- **Charging** — the filled LEDs stay solid and the next one up pulses slowly,
+  locking solid as each 20% step is reached. Full is all five, steady.
+- **Low** — below 20% the first LED blinks on its own, faster than the charging
+  pulse, so the two cannot be confused.
+
+**Player LED brightness** (Bright / Mid / Dim) applies whichever mode is
+selected, independently of the lightbar.
+
+This complements the battery notification rather than replacing it: the gauge is
+something you glance at to see how much is left; the lightbar pulse is a prompt
+that finds you when it is time to act.
+
+> Taking over the LEDs means the game can no longer show a player number. On a
+> DualSense Edge the gauge works alongside the controller's own on-board profile
+> display. Later standard DualSense hardware revisions are documented as
+> supporting only *mirrored* patterns, so a left-to-right bar may render
+> symmetrically on those.
+
+The Device tab diagnostics show the whole chain on one line — the mode as the
+firmware sees it, whether it is running, the battery byte it is reading, and the
+pattern being sent — so a gauge that looks wrong can be traced to the link that
+is actually at fault.
 
 ### Advanced — BT Latency (experimental)
 
@@ -1973,9 +2029,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.40.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.40.0)
-- `ds5-v1.40.0-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.41.6.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.41.6)
+- `ds5-v1.41.6-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —
