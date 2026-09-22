@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## [1.41.7] — 2026-09-22
+
+### Fixed
+
+- **In Passthrough, the player LEDs reverted to full brightness** whenever a game
+  started or changed its own brightness. Passthrough left the player LEDs
+  entirely to the game — brightness included — so every report the game sent
+  carried its own brightness and replaced the one chosen in the portal. The
+  setting was documented as applying in every mode, and did not.
+
+  Passthrough now still leaves the *pattern* to the game, so it shows its player
+  number exactly as it asks, but a **Mid** or **Dim** setting is kept regardless
+  of what the game sends. **Bright** remains hands-off, since it is the
+  controller's default and there is nothing to enforce. *Off* and *Battery gauge*
+  are unaffected — they already overrode everything.
+
 ## [1.41.6] — 2026-09-22
 
 ### Added

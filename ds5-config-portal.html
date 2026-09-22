@@ -375,7 +375,7 @@ const DESCRIPTIONS = {
   touch_mouse_trackball: "Keep the pointer gliding after you lift your finger, so a flick can cross a large screen without repeated drags.",
   touch_mouse_friction: "How quickly the glide slows down. Higher stops sooner.",
   player_led_mode: "The five white LEDs under the touchpad. Normally they show a player number, which on a single-player PC tells you nothing. \u201cPassthrough\u201d leaves them to the game and controller; \u201cOff\u201d turns them off; \u201cBattery gauge\u201d fills one LED per 20% from the left, pulses the next one up while charging, and blinks the first alone below 20%. Taking them over means the game can no longer show a player number. On a DualSense Edge the controller also drives these for its on-board profiles \u2014 whether a profile change overrides the gauge is not yet known.",
-  player_led_bright: "How bright the player LEDs are. Applies whichever mode is selected, and works independently of the lightbar.",
+  player_led_bright: "How bright the player LEDs are, independently of the lightbar. In Passthrough the game still chooses which LEDs are lit, but the brightness set here is kept even when a game sets its own. Bright leaves brightness to the game entirely.",
   lightbar_off: "Keeps the controller's lightbar dark, in every haptics mode. A battery notification still overrides it for the seconds it runs.",
   rumble_haptic_strength: "Strength of a game's rumble re-created on the actuators when it can't be handed to native rumble.",
   effect_leak_volume: "How loudly sharp one-off sounds leak to the speaker while it's muted.",
@@ -5668,7 +5668,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.41.6</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.41.7</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
