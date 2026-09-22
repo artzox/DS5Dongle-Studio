@@ -345,6 +345,26 @@ void __not_in_flash_func(interrupt_loop)() {
 // Report offsets: RightStickX=2, RightStickY=3, TriggerLeft=4,
 // AngularVelocityX(pitch)=15, Z(roll)=17, Y(yaw)=19 (int16 LE).
 volatile uint16_t g_diag_gyro = 0; // |horizontal gyro raw|, field 0x35
+// Player LEDs, instrumented: the bit pattern being written and which state
+// produced it. On a DualSense Edge the controller drives these itself for its
+// on-board profiles, so whether our writes stick, are overridden, or fight is
+// the open question - this makes the answer visible rather than a guess.
+volatile uint8_t g_diag_pled_bits  = 0;
+volatile uint8_t g_diag_pled_state = 0;   // 0 discharging, 1 low, 2 charging
+// Every link of the chain, so one reading is conclusive:
+//   mode   - the setting as the FIRMWARE sees it (did the save arrive?)
+//   runs   - how many times the LED block has executed (is it running at all?)
+//   raw    - the battery byte the block used (is it reading real data?)
+// The first two builds were guesses about which link was broken and both were
+// wrong. With all three visible there is nothing left to guess about.
+volatile uint8_t  g_diag_pled_mode = 0xFF;
+volatile uint16_t g_diag_pled_runs = 0;
+volatile uint8_t  g_diag_pled_raw  = 0;
+// The battery byte, captured in the main loop beside battery_notify_tick() -
+// the read that has been PROVEN on hardware. state_set() uses this copy rather
+// than reading the input array itself, so the gauge sees exactly what the
+// working battery notification sees.
+volatile uint8_t  g_batt_raw = 0;
 // Raw accelerometer, for the portal. Exposed so the axis mapping and the sign
 // of player-space aim can be checked against a real controller instead of
 // trusting the wiki - which was already wrong once about which byte is yaw.
@@ -1469,7 +1489,16 @@ int main() {
                 // reached the lightbar. state_set() builds from the state module's
                 // own struct, not from the host cache, so it is safe to compose
                 // one for this alone.
-                if (state_synth_tick() || battery_notify_wants_report()) {
+                // ...and whenever the player LEDs are taken over. The same trap a
+                // second time: the gauge is written inside state_set(), so with no
+                // report being composed it was never written at all, and its
+                // diagnostic froze at whatever it last saw - "charging, full" on a
+                // controller sitting at 40% on battery. The gauge also has to be
+                // REWRITTEN on a schedule anyway, or its charging pulse and low
+                // blink could never animate. Still inside the interval gate above,
+                // so this composes at the synth cadence rather than every pass.
+                if (state_synth_tick() || battery_notify_wants_report() ||
+                    player_led_wants_report()) {
                     uint8_t outputData[78]{};
                     outputData[0] = 0x31;
                     outputData[1] = reportSeqCounter << 4;
@@ -1500,6 +1529,7 @@ int main() {
         // lightbar. They are separate indicators for separate distances and
         // either may be used without the other.
         battery_notify_tick();
+        g_batt_raw = interrupt_in_data[52];
         button_check();
         bt_inquiring_led();
         dse_task();

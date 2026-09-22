@@ -36,8 +36,8 @@ static bool read_config_value(T &value, uint8_t const *buffer, uint16_t bufsize)
 // Firmware version, reported via read-only fields 0x7D/0x7E/0x7F so the portal
 // can display which build is flashed. Bump on every released build.
 constexpr uint8_t FW_VER_MAJOR = 1;
-constexpr uint8_t FW_VER_MINOR = 40;
-constexpr uint8_t FW_VER_PATCH = 0;
+constexpr uint8_t FW_VER_MINOR = 41;
+constexpr uint8_t FW_VER_PATCH = 6;
 
 // Width of the value the LAST successful write_config_value() emitted. The bulk
 // reader (0x0c) needs a length per field and used to carry its own hand-written
@@ -235,6 +235,8 @@ static bool set_field_in(Config_body &new_config, uint8_t field_id, uint8_t cons
         case 0x80: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.gyro_sens_mode=v; break; }
         case 0x8e: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.batt_notify_enable=v; break; }
         case 0xb8: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.flick_angle=v; break; }
+        case 0xb9: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.player_led_mode=v; break; }
+        case 0xba: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.player_led_bright=v; break; }
         case 0xb3: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.tilt_steer_y=v; break; }
         case 0xb4: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.tilt_steer_y_amount=v; break; }
         case 0xb5: { uint8_t v{}; if(!read_config_value(v,buffer,bufsize))return false; new_config.tilt_steer_y_invert=v; break; }
@@ -388,6 +390,13 @@ static bool get_config_field_from(const Config_body &config, uint8_t field_id, u
         case 0x80: return write_config_value(buffer, bufsize, config.gyro_sens_mode);
         case 0x8e: return write_config_value(buffer, bufsize, config.batt_notify_enable);
         case 0xb8: return write_config_value(buffer, bufsize, config.flick_angle);
+        case 0xb9: return write_config_value(buffer, bufsize, config.player_led_mode);
+        case 0xba: return write_config_value(buffer, bufsize, config.player_led_bright);
+        case 0xbb: { extern volatile uint8_t g_diag_pled_bits;  return write_config_value(buffer, bufsize, g_diag_pled_bits); }
+        case 0xbc: { extern volatile uint8_t g_diag_pled_state; return write_config_value(buffer, bufsize, g_diag_pled_state); }
+        case 0xbd: { extern volatile uint8_t  g_diag_pled_mode; return write_config_value(buffer, bufsize, g_diag_pled_mode); }
+        case 0xbe: { extern volatile uint16_t g_diag_pled_runs; return write_config_value(buffer, bufsize, g_diag_pled_runs); }
+        case 0xbf: { extern volatile uint8_t  g_diag_pled_raw;  return write_config_value(buffer, bufsize, g_diag_pled_raw); }
         case 0xb3: return write_config_value(buffer, bufsize, config.tilt_steer_y);
         case 0xb4: return write_config_value(buffer, bufsize, config.tilt_steer_y_amount);
         case 0xb5: return write_config_value(buffer, bufsize, config.tilt_steer_y_invert);

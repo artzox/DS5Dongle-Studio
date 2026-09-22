@@ -387,6 +387,15 @@ struct __attribute__((packed)) Config_body {
     // smaller checks impossible. This scales the flick so a full sideways push
     // turns by this much instead, keeping the direction meaningful while making
     // the amount yours. 90 is the unscaled original.
+    // ---- Player LEDs (appended 1.41.0) ----
+    // The five white LEDs under the touchpad. Normally they show a player
+    // number, which on a single-player PC is information nobody needs, so the
+    // strip is free for something useful - or for nothing at all.
+    //   0 = leave alone (the game or controller owns them)
+    //   1 = off
+    //   2 = battery gauge
+    uint8_t  player_led_mode;
+    uint8_t  player_led_bright;      // 0 bright, 1 mid, 2 dim (LightBrightness)
     uint8_t  flick_angle;            // degrees for a 90-degree stick push, 1-180
 };
 

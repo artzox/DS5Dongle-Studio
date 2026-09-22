@@ -172,6 +172,26 @@ void state_init() {
     set_gain(get_config().speaker_gain);
 }
 
+// Player-LED hand-back tail; see state_set(). Exposed so the main loop keeps
+// composing reports for its duration - on an idle desktop nothing else would,
+// and a hand-back that is never sent hands nothing back.
+static uint64_t player_led_tail_until_us = 0;
+bool player_led_wants_report(void) {
+    // The transition is detected HERE, in the function that decides whether a
+    // report is composed at all - not inside state_set(). Detecting it in
+    // state_set() was circular: state_set() only runs when a report is being
+    // composed, and this returned true only if the mode was non-zero or the
+    // tail was already armed. Switching to Passthrough made both false at once,
+    // so no report was composed, the change was never noticed, the tail never
+    // started, and the LEDs stayed frozen until something else - DS4Windows
+    // switching profile - happened to write to them.
+    static uint8_t s_prev_mode = 0;
+    const uint8_t mode = get_config().player_led_mode;
+    if (s_prev_mode != 0 && mode == 0) player_led_tail_until_us = time_us_64() + 300000;
+    s_prev_mode = mode;
+    return mode != 0 || time_us_64() < player_led_tail_until_us;
+}
+
 void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
     if (size > 63) {
         printf("[StateMgr] Warning: State Set over 63 bytes\n");
@@ -187,6 +207,113 @@ void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
     // do with whether someone wants the light on. Mode is per-profile, so
     // "dark in this game, lit in that one" is already expressible with two
     // profiles - the setting does not need to know about modes to achieve it.
+    // --- Player LEDs --------------------------------------------------------
+    // The five white LEDs under the touchpad (byte 43 bits 0-4), taken over by
+    // setting AllowPlayerIndicators. Brightness is its own field and its own
+    // allow-flag, so "dim" and "which LEDs" are separate writes.
+    //
+    // As a BATTERY GAUGE it reads as a bar, not a position: one LED per 20%,
+    // filled from the left. A bar is judged by length at a glance; a single lit
+    // LED sliding along the strip has to be located and counted first.
+    //
+    // Charging pulses the NEXT LED above the filled ones, so the strip says both
+    // where you are and that it is climbing; reaching a threshold locks that one
+    // solid and the pulse moves along. Below 20% the first LED blinks alone -
+    // unmistakable against charging, because nothing else is lit and the blink
+    // is at the bottom rather than above a solid run. The two use different
+    // rates as well: charging is slow and calm because it is information, the
+    // low warning is quicker because it is a prompt.
+    {
+        extern volatile uint8_t g_diag_pled_mode;
+        g_diag_pled_mode = get_config().player_led_mode;   // seen, whether or not it runs
+    }
+    // --- Hand-back when leaving a takeover mode -----------------------------
+    // The controller LATCHES the player LEDs: it shows whatever it was last sent
+    // until told otherwise. Passthrough simply stops writing, so switching from
+    // the gauge straight to Passthrough left the gauge on screen indefinitely -
+    // only going through Off (which writes all-dark) cleared it. Same trap as the
+    // lightbar colour that stuck after a battery notification.
+    //
+    // So on the way OUT of a takeover mode, keep writing for a short tail with
+    // the pattern from the state struct - whatever the game last asked for, or
+    // nothing if it never asked - which actively puts the LEDs back.
+    {
+        // Armed by player_led_wants_report(); this only applies it.
+        const uint8_t mode = get_config().player_led_mode;
+        if (mode == 0 && time_us_64() < player_led_tail_until_us && size > 43) {
+            data[1]  |= 0x10;                                  // AllowPlayerIndicators
+            data[43]  = (uint8_t) ((data[43] & 0x1F) | 0x20);  // the game's own pattern, instant
+        }
+    }
+
+    if (get_config().player_led_mode != 0 && size > 43) {
+        extern volatile uint8_t  g_batt_raw, g_diag_pled_raw;
+        extern volatile uint16_t g_diag_pled_runs;
+        const uint8_t raw = g_batt_raw;
+        g_diag_pled_raw = raw;
+        if (g_diag_pled_runs < 65535) g_diag_pled_runs++;
+        const uint8_t level = raw & 0x0F;          // 0-10
+        const uint8_t pstate = (raw >> 4) & 0x0F;  // 0 discharging
+        const bool charging = (pstate == 0x01 || pstate == 0x02);
+        const uint64_t now = time_us_64();
+        uint8_t bits = 0;
+
+        if (get_config().player_led_mode == 2 && level <= 10) {
+            // TIME-debounced, not level-hysteresis. The earlier version only
+            // followed the reading once it had moved two steps away, which on a
+            // ten-step scale that moves one step at a time made the thresholds
+            // depend on where the gauge happened to start: from an odd reading
+            // every threshold landed a step late, and the low warning began at
+            // 10% instead of 20%.
+            //
+            // Now the LED count is a pure function of the reading - one per
+            // 20%, the same from any starting point - and a change only takes
+            // effect once the new count has held for DEBOUNCE_US. A reading that
+            // jitters across a boundary never lasts long enough to register, and
+            // since charge moves by minutes per 10% the delay is invisible.
+            constexpr uint64_t DEBOUNCE_US = 5000000;
+            static uint8_t  s_lit = 0xFF, s_cand = 0xFF;
+            static uint64_t s_cand_since = 0;
+            const uint8_t n = (uint8_t) ((level + 1) / 2);         // 0-5 LEDs, 20% each
+            if (s_lit == 0xFF) {
+                s_lit = n; s_cand = n;                             // first reading: show it
+            } else if (n == s_lit) {
+                s_cand = n;                                        // settled, nothing pending
+            } else if (n != s_cand) {
+                s_cand = n; s_cand_since = now;                    // new candidate, start timing
+            } else if (now - s_cand_since >= DEBOUNCE_US) {
+                s_lit = n;                                         // held long enough: accept
+            }
+            const uint8_t lit = s_lit;
+            for (uint8_t i = 0; i < lit && i < 5; i++) bits |= (uint8_t) (1u << i);
+
+            constexpr uint64_t CHARGE_MS = 1500, LOW_MS = 500;
+            if (charging && lit < 5) {
+                if (((now / 1000) % CHARGE_MS) < (CHARGE_MS / 2)) bits |= (uint8_t) (1u << lit);
+            } else if (!charging && lit <= 1) {                  // 20% and below
+                bits = (((now / 1000) % LOW_MS) < (LOW_MS / 2)) ? 0x01 : 0x00;
+            }
+        }
+        // mode 1 leaves bits at 0: every LED off.
+
+        data[1]  |= 0x10;                   // AllowPlayerIndicators (byte 1 bit 4)
+        // Bit 5 is PlayerLightFade: LOW fades the whole strip in on every
+        // change, HIGH switches instantly. Left low, the charging pulse toggling
+        // one LED re-ran the fade across all five, so the steady ones blinked in
+        // time with it - the strip flicked between "3 lit" and "4 lit" instead of
+        // holding three and pulsing the fourth. Instant change keeps the steady
+        // LEDs steady; the pulse is our own timing anyway, not the controller's.
+        data[43]  = (uint8_t) (bits | 0x20);
+        // Brightness has its OWN allow-flag at byte 38 bit 0. An earlier build
+        // also set byte 1 bit 0 believing it was this flag - it is AllowMuteLight,
+        // so it was quietly taking control of the mute LED as well.
+        data[38] |= 0x01;                   // AllowLightBrightnessChange
+        data[42] = get_config().player_led_bright;   // 0 bright, 1 mid, 2 dim
+        extern volatile uint8_t g_diag_pled_bits, g_diag_pled_state;
+        g_diag_pled_bits  = bits;
+        g_diag_pled_state = (uint8_t) (charging ? 2 : (level <= 2 ? 1 : 0));
+    }
+
     if (get_config().lightbar_off && size > 46) {
         data[1] |= 0x04;   // AllowLedColor
         data[44] = 0x00;   // LedRed
