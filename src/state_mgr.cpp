@@ -231,6 +231,22 @@ void __not_in_flash_func(state_set)(uint8_t *data, const uint8_t size) {
         extern volatile uint8_t g_diag_pled_mode;
         g_diag_pled_mode = get_config().player_led_mode;   // seen, whether or not it runs
     }
+    // --- Trigger strength reduction -----------------------------------------
+    // Byte 36 holds two reduction levels, one per nibble, behind the
+    // AllowMotorPowerLevel flag (byte 1 bit 6). The HIGH nibble is the trigger
+    // motors and the LOW nibble is rumble - the reverse of what this tree's
+    // header used to say. awalol's 0.72 uses this layout and it is confirmed to
+    // reduce the triggers; building from the old field names would have reduced
+    // the rumble instead. Written as raw bytes so the field names cannot mislead.
+    //
+    // Only the trigger nibble changes. A game may set its own rumble reduction,
+    // which state_update_apply() already copies through, and that must survive.
+    if (get_config().trigger_reduce > 0 && size > 36) {
+        data[1]  |= 0x40;                                           // AllowMotorPowerLevel
+        data[36]  = (uint8_t) ((data[36] & 0x0F) |
+                               ((get_config().trigger_reduce & 0x0F) << 4));
+    }
+
     // --- Hand-back when leaving a takeover mode -----------------------------
     // The controller LATCHES the player LEDs: it shows whatever it was last sent
     // until told otherwise. Passthrough simply stops writing, so switching from

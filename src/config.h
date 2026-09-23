@@ -397,6 +397,13 @@ struct __attribute__((packed)) Config_body {
     uint8_t  player_led_mode;
     uint8_t  player_led_bright;      // 0 bright, 1 mid, 2 dim (LightBrightness)
     uint8_t  flick_angle;            // degrees for a 90-degree stick push, 1-180
+    // ---- Trigger strength reduction (appended 1.42.0) ----
+    // Asks the CONTROLLER to scale down its adaptive-trigger motor power, in ten
+    // steps. Because the reduction happens inside the controller it applies to
+    // whatever is driving the triggers - a game's native effects, or this
+    // fork's own - without reshaping any of them. 0 leaves the power alone.
+    // Ported from awalol's DS5Dongle 0.72 (trigger_reduce).
+    uint8_t  trigger_reduce;         // 0 off, 1-10 reduction steps
 };
 
 // Stage-2 output buttons. Values are PERSISTED in every profile and slot, so

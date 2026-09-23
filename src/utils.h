@@ -356,8 +356,11 @@ struct __attribute__((packed)) SetStateData { // 47
 /*32  */ uint32_t HostTimestamp; // mirrored into report read
 /*    */
 /*    */ // MotorPowerLevel
-/*36.0*/ uint8_t TriggerMotorPowerReduction : 4; // 0x0-0x7 (no 0x8?) Applied in 12.5% reductions
-/*36.4*/ uint8_t RumbleMotorPowerReduction : 4;  // 0x0-0x7 (no 0x8?) Applied in 12.5% reductions
+/*36.0*/ uint8_t RumbleMotorPowerReduction : 4;  // 0x0-0x7 (no 0x8?) Applied in 12.5% reductions
+/*36.4*/ uint8_t TriggerMotorPowerReduction : 4; // 0x0-0xA. These two were listed the other
+/*    */                                         // way round here; the trigger reduction is
+/*    */                                         // the HIGH nibble, as awalol's DS5Dongle 0.72
+/*    */                                         // uses and as confirmed on hardware there.
 /*    */
 /*    */ // AudioControl2
 /*37.0*/ uint8_t SpeakerCompPreGain: 3; // additional speaker volume boost
