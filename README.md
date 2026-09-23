@@ -1,6 +1,6 @@
 # DS5Dongle — Studio
 
-**Version 1.41.7**
+**Version 1.42.0**
 
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
@@ -21,7 +21,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.41.7-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1.42.0-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -61,6 +61,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Auto-Haptics & Speaker Effect Leak](#auto-haptics--speaker-effect-leak)
   - [Native Haptics Filter](#native-haptics-filter)
   - [General Haptics & Audio](#general-haptics--audio)
+  - [Trigger strength reduction (new in 1.42.0)](#trigger-strength-reduction-new-in-1420)
   - [Trigger-to-Rumble (R2T)](#trigger-to-rumble-r2t)
   - [Adaptive Triggers (Stage 1: resistance, Stage 2: push-back kick)](#adaptive-triggers-stage-1-resistance-stage-2-push-back-kick)
   - [Two-stage triggers (new in 1.22.0)](#two-stage-triggers-new-in-1220)
@@ -280,7 +281,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.41.7.uf2` (Pico 2 W) or `ds5-v1.41.7-waveshare.uf2` (Waveshare) to the
+   `ds5-v1.42.0.uf2` (Pico 2 W) or `ds5-v1.42.0-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -710,6 +711,32 @@ buzzy or harsh on your pad.
 | Lock Volume | on/off | off | Ignore in-game volume changes |
 | Disable Mic | on/off | off | Disable the controller microphone |
 | Disable Speaker | on/off | off | Disable the controller speaker |
+
+### Trigger strength reduction *(new in 1.42.0)*
+
+Weakens the adaptive-trigger motors, in ten steps. It is set on the **Triggers**
+tab, in the *Trigger Strength* section.
+
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| Trigger strength reduction | Off, 1–10 | Off | Off is full strength; 10 is the weakest |
+
+The reduction happens **inside the controller**: the dongle asks the DualSense to
+lower its trigger motor power, rather than reshaping the effects it sends. So an
+effect keeps its shape — where a wall sits, where a bow snaps, how a weapon
+breaks — and only its force drops.
+
+Because of that, it applies to **everything** driving the triggers:
+
+- a game's own native trigger effects, which is where it is most useful — for
+  games whose resistance is heavier than you want;
+- this fork's own adaptive trigger settings and custom effects.
+
+It is independent of *Force Override*: the reduction applies whether the game or
+the dongle owns the triggers at the time.
+
+Like any new setting, it is only kept in a slot once that slot has been saved on
+a version that has it. Ported from awalol's DS5Dongle 0.72 (`trigger_reduce`).
 
 ### Trigger-to-Rumble (R2T)
 Routes the rumble signal into the trigger actuators as a buzz.
@@ -2031,9 +2058,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.41.7.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
-  reports version 1.41.7)
-- `ds5-v1.41.7-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1.42.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+  reports version 1.42.0)
+- `ds5-v1.42.0-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

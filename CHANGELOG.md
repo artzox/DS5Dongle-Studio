@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented here.
 
+## [1.42.0] — 2026-09-23
+
+### Added
+
+- **Trigger strength reduction.** A new *Trigger Strength* section on the
+  Triggers tab weakens the adaptive-trigger motors in ten steps, from *Off* (full
+  strength) to *10* (weakest). The reduction is made by the controller itself —
+  the dongle asks the DualSense to lower its trigger motor power rather than
+  reshaping the effects — so every effect keeps its shape and only its force
+  drops. It applies to anything driving the triggers: a game's native effects,
+  which is where it is most useful, and this fork's own trigger settings and
+  custom effects alike. Ported from awalol's DS5Dongle 0.72 (`trigger_reduce`).
+
+  To use it per game, set it and save it to that game's slot — older slots do
+  not carry the setting until they are saved again.
+
+### Fixed
+
+- **The controller's motor power reduction fields were documented the wrong way
+  round.** Byte 36 of the output report holds two reduction levels, one per
+  nibble: the trigger motors in the high nibble and rumble in the low. This
+  tree's header had them swapped. Nothing used those fields before, so no
+  behaviour changes — but building trigger reduction from the old names would
+  have weakened the rumble instead of the triggers. The header now matches
+  awalol's, which is confirmed on hardware.
+
+### Upgrading from 1.40.0
+
+- If you are coming straight from **1.40.0**, see the *Upgrading from 1.40.0*
+  note under 1.41.6: the flick turn angle resets to 90° once and needs setting
+  again, in slots saved on 1.40.0 as well as in your current settings.
+
 ## [1.41.7] — 2026-09-22
 
 ### Fixed
