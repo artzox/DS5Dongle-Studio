@@ -20,6 +20,22 @@ All notable changes to this project are documented here.
 
 ## [1.41.6] — 2026-09-22
 
+### Upgrading from 1.40.0
+
+- **Flick turn angle resets to 90° once.** The player LED settings were inserted
+  into the configuration *ahead of* the flick turn angle added in 1.40.0, rather
+  than after it, so the angle moved to a new position and reads its default on
+  the first start. Set it again after upgrading — it is kept from then on.
+
+  On-device **slots** saved on 1.40.0 are affected the same way when activated,
+  and need the angle re-saving into them. Exported profile files (`.json` and the
+  auto-apply `.html` pages) store settings by name rather than by position, so
+  they load correctly. Upgrading from 1.39.x or earlier is unaffected.
+
+  In the unlikely case that the flick angle had been set to exactly 1° or 2°, the
+  player LEDs will start as *Off* or *Battery gauge* respectively; set them back
+  to *Passthrough* if so.
+
 ### Added
 
 - **Player LEDs.** The five white LEDs under the touchpad normally show a player

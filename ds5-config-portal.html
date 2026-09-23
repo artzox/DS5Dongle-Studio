@@ -254,6 +254,9 @@ const SECTIONS = [
   { title: 'Native Haptics Filter', fields: [
     [0x33,'haptics_aa','u8','Smoothing (anti-alias filter)','select',{1:'Off — raw & gritty (pre-1.0.4 texture)',2:'Light — kills grit, keeps snap (recommended)',3:'Strong — maximum smooth (can feel muted)'}],
   ]},
+  { title: 'Trigger Strength', fields: [
+    [0xc0,'trigger_reduce','u8','Trigger strength reduction','select',{0:'Off \u2014 full strength',1:'1',2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10 \u2014 weakest'}],
+  ]},
   { title: 'Rumble → Trigger', fields: [
     [0x27,'r2t_mode','u8','Mode','select',{0:'Off',1:'Left trigger only',2:'Right trigger only',3:'Both triggers'}],
     [0x28,'r2t_on_press','u8','Only vibrate when trigger pressed','bool'],
@@ -376,6 +379,7 @@ const DESCRIPTIONS = {
   touch_mouse_friction: "How quickly the glide slows down. Higher stops sooner.",
   player_led_mode: "The five white LEDs under the touchpad. Normally they show a player number, which on a single-player PC tells you nothing. \u201cPassthrough\u201d leaves them to the game and controller; \u201cOff\u201d turns them off; \u201cBattery gauge\u201d fills one LED per 20% from the left, pulses the next one up while charging, and blinks the first alone below 20%. Taking them over means the game can no longer show a player number. On a DualSense Edge the controller also drives these for its on-board profiles \u2014 whether a profile change overrides the gauge is not yet known.",
   player_led_bright: "How bright the player LEDs are, independently of the lightbar. In Passthrough the game still chooses which LEDs are lit, but the brightness set here is kept even when a game sets its own. Bright leaves brightness to the game entirely.",
+  trigger_reduce: "Asks the controller to weaken its adaptive-trigger motors, in ten steps. Because the reduction happens inside the controller, it applies to whatever is driving the triggers \u2014 a game's native effects included \u2014 without changing their shape, only their force. Useful for games whose native trigger resistance is heavier than you want. Off leaves the triggers at full strength. Ported from awalol's DS5Dongle 0.72.",
   lightbar_off: "Keeps the controller's lightbar dark, in every haptics mode. A battery notification still overrides it for the seconds it runs.",
   rumble_haptic_strength: "Strength of a game's rumble re-created on the actuators when it can't be handed to native rumble.",
   effect_leak_volume: "How loudly sharp one-off sounds leak to the speaker while it's muted.",
@@ -2834,6 +2838,7 @@ setInterval(()=>{
 const SECTION_TAB = {
   'Adaptive Triggers — R2 (right trigger)':'triggers',
   'Adaptive Triggers — L2 (left trigger)':'triggers',
+  'Trigger Strength':'triggers',
   'Rumble → Trigger':'triggers',
   'Auto-Haptics & Speaker Effect Leak':'haptics',
   'General Haptics & Audio':'haptics',
@@ -5668,7 +5673,7 @@ function render(){
   const _qEl = (typeof document !== 'undefined') ? document.activeElement : null;
   const _qFocused = !!(_qEl && _qEl.id === 'qbox');
   const _qCaret = _qFocused ? _qEl.selectionStart : 0;
-  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.41.7</span></h1>
+  let html = `<h1>DS5 Studio Bridge <span style="font-size:13px;color:var(--sub)">v1.42.0</span></h1>
     <div class="status-bar"><div class="dot ${on?'on':''}"></div>
       <span style="flex:1">${on?`Connected — ${device.productId===DSE_PID?'DualSense Edge':'DualSense'}${fwVer?` · FW v${fwVer.maj}.${fwVer.min}.${fwVer.pat} · config v${fwVer.cfgv}`:` · FW: pre-1.0.5 (no version fields)`}`:'Not connected'}</span>
       <button class="btn ${on?'btn-outline':'btn-primary'}" onclick="${on?'disconnect()':'connect()'}">${on?'Disconnect':'Connect'}</button>
