@@ -2,6 +2,8 @@
 
 **Version 1.42.0**
 
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/artzox)
+
 ▶️ **[Configure in your browser](https://artzox.github.io/DS5Dongle-Studio/ds5-config-portal.html)** — the config portal can run as a web page, no download required. Needs Chrome or Edge, with the dongle plugged in.
 
 💾 **[Downloads, source and releases on GitHub](https://github.com/artzox/DS5Dongle-Studio)** — the firmware `.uf2` files live under *Releases*.
