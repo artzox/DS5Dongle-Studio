@@ -70,6 +70,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Custom Captured Effects (new in 1.14.0)](#custom-captured-effects-new-in-1140)
   - [Trigger effects — shared](#trigger-effects--shared)
   - [Gyro Aiming](#gyro-aiming)
+    - [Pausing gyro aim from a button (new in 1.43.0)](#pausing-gyro-aim-from-a-button-new-in-1430)
   - [Right Stick Inversion](#right-stick-inversion)
   - [Gyro sensitivity: Natural or Manual (new in 1.32.0)](#gyro-sensitivity-natural-or-manual-new-in-1320)
   - [Stick to Mouse (new in 1.30.0)](#stick-to-mouse-new-in-1300)
@@ -172,7 +173,8 @@ to RAM so native fine haptics and controller audio work without overclocking.
 - **Gyro-to-stick aiming** — maps controller motion onto the right stick for
   motion aiming, with selectable activation (always / while L2 held / touchpad
   touch / ratchet), sensitivity, horizontal axis source (yaw or roll), and
-  per-axis invert.
+  per-axis invert. A macro row can also pause and resume it from a controller
+  button mid-game, without disturbing the USB interfaces.
 - **Right-stick inversion** — invert the physical right stick's X axis, Y axis, or
   both, in any game with no PC-side software. Independent of gyro aiming (it applies
   whether or not gyro is on), for inverted-look setups or games that only offer
@@ -1167,6 +1169,32 @@ Maps controller motion onto the right stick — or onto a mouse — for motion a
 - **Ratchet** — always on, but touching the touchpad *pauses* it so you can
   reposition (like lifting a mouse).
 
+#### Pausing gyro aim from a button *(new in 1.43.0)*
+
+The touchpad ratchet above wants a thumb parked on the pad for as long as the
+pause lasts, which is no help in a menu you are actually navigating. To pause it
+from a button instead, bind one of three macro outputs on the **Macros** tab:
+add a row, set the output kind to **Mouse**, then pick **Gyro mouse toggle**,
+**Gyro mouse off** or **Gyro mouse on**.
+
+These **latch**: press once and let go, and the gyro stays paused until you
+press again — which is the point, since the alternative is holding something
+down. Tick **Hold** on the row if you want the momentary form instead, paused
+only while the button is held. Binding *off* and *on* to two different buttons
+is an option if a toggle you cannot see the state of makes you nervous; the
+Macros tab's diagnostics report **Gyro aim: running / PAUSED by a macro** either
+way.
+
+The pause does not touch USB. The mouse interface stays exactly as it is, so the
+device does not re-enumerate and a game that has decided it is talking to a
+mouse keeps its prompts and its HUD — only the gyro's contribution stops, so the
+pointer holds still. Flick Stick, stick-to-mouse, touchpad-as-mouse and tilt
+steering all keep working through it.
+
+It is not saved anywhere. The pause is cleared by switching profile, by a
+reconnect, and by disabling the macro row, so it cannot be left on by accident
+and then puzzled over a week later.
+
 *Guide:* **L2-held + Yaw** is the most natural starting point for shooters — turn
 the controller to fine-tune aim only when aiming down sights. Raise sensitivity if
 the motion feels sluggish; use invert if the direction feels backwards.
@@ -1628,12 +1656,14 @@ A macro row does not have to send a keystroke. Two settings turn it into a remap
 
 - **Keyboard** — a key combination, as before.
 - **Controller button** — any face, shoulder, stick or trigger button. More reliable in-game than a keystroke: a game that sees a DualSense is in controller mode, and many ignore the keyboard entirely or flip every on-screen prompt when one arrives.
-- **Mouse** — left, right or middle click, or scroll up/down. Clicks hold while the input is held, so click-and-drag works; scroll sends one tick per press.
+- **Mouse** — left, right or middle click, or scroll up/down. Clicks hold while the input is held, so click-and-drag works; scroll sends one tick per press. The same picker also offers **Gyro mouse toggle / off / on** *(new in 1.43.0)*, which send nothing at all — they pause and resume gyro aiming; see [Pausing gyro aim from a button](#pausing-gyro-aim-from-a-button-new-in-1430).
 
 **Record** and **Pick** work the same way for all three. Record captures what you
 actually do — press the controller button, or click the mouse — and Pick lets you
 choose by hand. Selecting a controller or mouse output turns **hold while held**
-on for you, since that is what a remap almost always means.
+on for you, since that is what a remap almost always means — except for the gyro
+entries, which are latches and are left alone so one press can flip the state
+and let go.
 
 A **double tap** costs nothing unless you use it. A single tap can only be
 resolved late if a double-tap row exists on the *same* trigger — until the window
@@ -1648,7 +1678,9 @@ is no travel to copy.
 
 > Choosing a **mouse** output makes the dongle present a mouse to the PC, so the
 > controller re-enumerates once — but only when you **save**, never while you are
-> editing.
+> editing. The **gyro** entries are the exception: they emit no mouse report, so
+> they never bring the mouse interface up on their own and never cause that
+> reconnect.
 
 #### One button, a single tap and a double tap, with the button hidden
 

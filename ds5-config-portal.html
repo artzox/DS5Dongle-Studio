@@ -3206,11 +3206,21 @@ const MACRO_OUT_BTNS = ['Keyboard','Cross','Circle','Square','Triangle','L1','R1
                         // continuing from 11 because 11-15 are already the mouse outputs in
                         // every saved macro.
                         'Create','Options','Touchpad click',
-                        'D-pad Up','D-pad Down','D-pad Left','D-pad Right'];
+                        'D-pad Up','D-pad Down','D-pad Left','D-pad Right',
+                        // 23+ : gyro aim control (GOUT_* in src/macro.h). These send
+                        // nothing - they pause and resume gyro aiming. Numbered above
+                        // every controller button so no saved macro changes meaning.
+                        'Gyro mouse toggle','Gyro mouse off','Gyro mouse on'];
 // Index 11+ are MOUSE actions, matching MOUT_* in src/macro.h. The split is by
 // value range so the firmware's controller loop never sees them.
 const MOUT_FIRST = 11, MOUT_LAST = 15;
 function macroIsMouseOut(v){ return (v|0) >= MOUT_FIRST && (v|0) <= MOUT_LAST; }
+// Gyro aim control, GOUT_* in src/macro.h. Offered in the MOUSE picker because
+// that is where a user looks for it, but it is not a mouse output: the firmware
+// keeps these out of macro_any_mouse_output(), so binding one never brings the
+// mouse interface up or re-enumerates the device.
+const GOUT_FIRST = 23, GOUT_LAST = 25;
+function macroIsGyroOut(v){ return (v|0) >= GOUT_FIRST && (v|0) <= GOUT_LAST; }
 const STICK_DIRS = ['\u2191','\u2192','\u2193','\u2190'];   // up, right, down, left
 const GEST_MOTION = 0x10;
 const MACRO_NONE_ENABLED = 0xFFFFFFFF;
@@ -3569,10 +3579,21 @@ window._macroPickIn = window._macroPickIn || null; // {row, mask} manual trigger
 // originals, 11-15 are the mouse block, and 16+ are the buttons appended after
 // it. Pass an explicit list rather than a lo/hi span, or the new ones are
 // unreachable and the mouse actions appear in the controller picker.
+// The upper bound is GOUT_FIRST, not the array length. Sweeping to the end is
+// how the flick outputs ended up in the controller picker in 1.40.x: anything
+// appended past the mouse block for a NON-controller purpose lands in this list
+// unless it is explicitly excluded.
 function macroOutBtnValues(){
   const v = [];
   for (let k = 1; k < MOUT_FIRST; k++) v.push(k);
-  for (let k = MOUT_LAST + 1; k < MACRO_OUT_BTNS.length; k++) v.push(k);
+  for (let k = MOUT_LAST + 1; k < GOUT_FIRST; k++) v.push(k);
+  return v;
+}
+// The mouse picker: the five real mouse actions, then the gyro aim controls.
+function macroOutMouseValues(){
+  const v = [];
+  for (let k = MOUT_FIRST; k <= MOUT_LAST; k++) v.push(k);
+  for (let k = GOUT_FIRST; k <= GOUT_LAST; k++) v.push(k);
   return v;
 }
 function macroPickBtnHTML(i, m){ return macroPickOutHTML(i, m, macroOutBtnValues(), 'Which controller button should this macro send?'); }
@@ -4738,6 +4759,11 @@ function macroDiagHTML(d){
   let h = 'Hiding <b>' + (hid.length ? hid.join(' + ') : 'nothing') + '</b>, sending <b>' +
           (out.length ? out.join(', ') : 'nothing') + '</b>, report rewrite ' +
           ((d.stickSup & 4) ? '<b>ON</b>' : 'off');
+  // Bit 3 of 0x8c. Reported unconditionally, including when it is running: the
+  // useful question is "is the ratchet the reason the aim is dead", and an
+  // absent line answers nothing.
+  h += '<br>Gyro aim: <b>' + ((d.stickSup & 8) ? 'PAUSED by a macro' : 'running') +
+       '</b> (the mouse interface is unaffected either way)';
   if (d.padx !== null && d.padx !== undefined){
     const half = ['unqualified (centre band, or no finger)','LEFT','RIGHT'][d.padinfo & 3] || '?';
     h += '<br>Touchpad click: last finger-down x=' + d.padx + '/1919, clicks seen=' +
@@ -4879,7 +4905,10 @@ function macroOutKind(i, m){
   const k = (window._macroOutKind || {})[i];
   if (k !== undefined) return k;
   if (!m || (m.out_btn|0) === 0) return 0;
-  return macroIsMouseOut(m.out_btn) ? 2 : 1;
+  // Gyro aim control lives under the mouse kind: that is where it is offered,
+  // so that is where a saved row has to reappear, or re-opening a profile would
+  // show it as an unrecognised controller button.
+  return (macroIsMouseOut(m.out_btn) || macroIsGyroOut(m.out_btn)) ? 2 : 1;
 }
 function macroSetOutKind(i, kind){
   const m = (window._macroRows||[])[i]; if (!m) return;
@@ -4890,7 +4919,7 @@ function macroSetOutKind(i, kind){
   } else {
     // Switching between controller and mouse must drop a button from the other
     // family, or the row keeps an output the new kind cannot express.
-    const isMouse = macroIsMouseOut(m.out_btn);
+    const isMouse = macroIsMouseOut(m.out_btn) || macroIsGyroOut(m.out_btn);
     if ((kind === 2) !== isMouse) m.out_btn = 0;
     if (macroCanHold(m)) m.flags = (m.flags|0) | MACRO_FLAG_HOLD;
   }
@@ -4910,7 +4939,13 @@ function macroSetOutBtn(i, v){
   // ...but NOT over an explicit double tap. That row already says how it fires,
   // and a double tap now pulses a controller output rather than doing nothing,
   // so forcing HOLD on would silently clear the box the user just ticked.
-  if (m.out_btn !== 0 && macroCanHold(m) && !(m.flags & MACRO_FLAG_DOUBLE))
+  // ...and NOT over a gyro output either. Those are a RATCHET: the whole point
+  // is that one press changes the state and the state outlives the press.
+  // Forcing HOLD on would turn the toggle into "paused only while you keep the
+  // button down", which is the touchpad behaviour this feature replaces. Hold
+  // stays available for anyone who does want the momentary form.
+  if (m.out_btn !== 0 && macroCanHold(m) && !(m.flags & MACRO_FLAG_DOUBLE) &&
+      !macroIsGyroOut(m.out_btn))
     m.flags = (m.flags|0) | MACRO_FLAG_HOLD;
   macroRender();
 }
@@ -5124,7 +5159,7 @@ function macroRender(){
       h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickInHTML(i) + '</td></tr>';
     }
     if (pickOpen && macroOutKind(i, m) === 2){
-      h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickOutHTML(i, m, Array.from({length: MOUT_LAST - MOUT_FIRST + 1}, (_, n) => MOUT_FIRST + n), 'Which mouse action should this macro send?') + '</td></tr>';
+      h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickOutHTML(i, m, macroOutMouseValues(), 'Which mouse action should this macro send? The three gyro entries send nothing — they pause and resume gyro aiming.') + '</td></tr>';
     } else if (pickOpen && macroOutKind(i, m) === 1){
       // Controller output: pick a BUTTON, not a key combo.
       h += '<tr><td colspan="7" style="padding:8px 10px">' + macroPickBtnHTML(i, m) + '</td></tr>';
@@ -5230,6 +5265,11 @@ async function macroImportFile(file){
 }
 
 // Any ENABLED row with a mouse output, in the rows as they will be saved.
+// Deliberately EXCLUDES the gyro aim entries, even though they are offered
+// under the mouse kind: they emit no mouse report, so they must not be what
+// brings the interface up. This has to agree with macro_any_mouse_output() in
+// src/macro.cpp or the portal and the device disagree about whether saving the
+// table needs a reconnect.
 function macroAnyMouseEnabled(){
   const rows = window._macroRows || [];
   for (let i = 0; i < MACRO_COUNT; i++){
@@ -5707,6 +5747,16 @@ function render(){
     // they depend on - not appended after every other card at the foot of the
     // page, where the Save button sits between a setting and its switch.
     if (section.title === 'Battery Notification') html += battStagesPanelHTML();
+    if (section.title === 'Gyro Aiming') {
+      html += '<div style="font-size:12px;color:var(--sub);margin-top:6px">' +
+              'To pause gyro aiming <b>in game</b> — for a menu where every small movement ' +
+              'moves the cursor — bind a button on the <b>Macros</b> tab with the output kind set ' +
+              'to <b>Mouse</b>, then pick <b>Gyro mouse toggle</b> (or the separate ' +
+              '<b>off</b> / <b>on</b> entries). It is a latch, so you press once and let go; it does ' +
+              'not touch the mouse interface, so nothing re-enumerates and the game keeps its ' +
+              'prompts. Tick <b>Hold</b> on the row instead if you want it paused only while the ' +
+              'button is held. The pause is cleared by a profile switch and by a reconnect.</div>';
+    }
     if (section.title === 'Tilt Steering (experimental)') {
       html += '<div style="font-size:12px;color:var(--sub);margin-top:6px">' +
               'Calibrate with <b>Start live test</b> on the Macros tab: roll the pad and watch the ' +

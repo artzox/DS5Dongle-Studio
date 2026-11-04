@@ -2,6 +2,48 @@
 
 All notable changes to this project are documented here.
 
+## [1.43.0] — 2026-11-04
+
+### Added
+
+- **Pause gyro aiming from a controller button.** Three new macro outputs —
+  *Gyro mouse toggle*, *Gyro mouse off* and *Gyro mouse on* — turn gyro aiming
+  off and on mid-game without taking a hand off the sticks. Bind one on the
+  **Macros** tab: add a row, set the output kind to **Mouse**, and pick the
+  entry you want.
+
+  This is the ratchet the touchpad already offered, without the finger. *Always
+  on — touch touchpad to pause* works, but it needs a thumb parked on the pad
+  for as long as the pause lasts, which is no use in a menu you are navigating.
+  The new outputs **latch**: press once and let go, and the gyro stays paused
+  until you press again. Tick **Hold** on the row instead if you would rather
+  it be momentary — paused only while the button is held.
+
+  What it does *not* do is touch USB. The mouse interface stays exactly as it
+  was, so the device does not re-enumerate, Windows does not re-detect anything,
+  and a game that has decided it is talking to a mouse keeps its prompts and its
+  HUD. All that stops is the gyro's contribution, so the pointer simply holds
+  still. Everything else keeps working through the pause: Flick Stick,
+  stick-to-mouse, touchpad-as-mouse and tilt steering are all unaffected.
+
+  The pause is deliberately **not persistent**. It lives in RAM only, is never
+  written to a slot, and is cleared by a profile switch, by a reconnect and by
+  disabling the macro row — it is meant for one game's menus, not as a setting
+  you can leave on by accident and then spend an evening hunting.
+
+  The Macros tab's diagnostics now report *Gyro aim: running / PAUSED by a
+  macro*, so if the aim is dead you can see in one line whether the ratchet is
+  the reason.
+
+### Internal
+
+- `tools/portal-macro-test.js` now cross-checks the portal's output numbering
+  against `src/macro.h` and `src/config.h`. That numbering is persisted in every
+  saved macro and is split across three ranges (controller 1–10 and 16–22, mouse
+  11–15, gyro 23–25), with a copy of the split on each side; the two had already
+  drifted twice, once putting outputs in the wrong picker. Both failure modes
+  now fail the test rather than reaching a release.
+
 ## [1.42.0] — 2026-09-23
 
 ### Added
