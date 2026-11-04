@@ -31,6 +31,9 @@ const fn = new Function('window', 'document', 'navigator', 'location', js + `
            getRows: () => window._macroRows,
            setPick: p => { window._macroPick = p; },
            setSnap: x => { savedSnapshot = x; },
+           MOUT_FIRST, MOUT_LAST, GOUT_FIRST, GOUT_LAST,
+           MACRO_OUT_BTNS, macroIsMouseOut, macroIsGyroOut, macroOutKind,
+           macroOutBtnValues, macroOutMouseValues, macroAnyMouseEnabled,
            macroSetBit, getCfg: () => config,
            setCfg: c => { config = c; },
            setDev: d => { device = d; } };`);
@@ -125,6 +128,132 @@ ok(allPerm, 'picker always emits a valid release permutation');
   M.setSnap({...M.getCfg()});          // what a successful saveAll() does
   M.macroRender();                     // the repaint macroSaveTable performs
   ok(!/Enable state changed/.test(boxHtml), 'cleared once the snapshot is refreshed');
+})();
+
+
+// Every row KIND must render. A stick row exercised a code path no fixture
+// touched, so macroRender() called a helper that did not exist and the whole
+// suite still passed - rendering only rows of one shape proves only that shape.
+(function rowKindsRender(){
+  console.log('every row kind renders without throwing');
+  const kinds = [
+    ['chord',  {chord:1<<15, gesture:0, flags:0, keys:[0xE0,0x0D,0,0], rel_order:1}],
+    ['hold remap to key',    {chord:1<<5, gesture:0, flags:0x02, keys:[0x2C,0,0,0]}],
+    ['hold remap to button', {chord:1<<5, gesture:0, flags:0x06, keys:[0,0,0,0], out_btn:2}],
+    ['left stick',  {chord:0, gesture:0x80|0x20, flags:0x02, keys:[0x1A,0x07,0x16,0x04], stick_thresh:48}],
+    ['right stick', {chord:0, gesture:0x80|0x20|0x40, flags:0x06, keys:[0x1A,0x07,0x16,0x04], stick_thresh:0}],
+    ['motion',      {chord:1<<10, gesture:0x80|0x10, flags:0, keys:[0x2B,0,0,0], motion:[1,0], motion_len:1}],
+  ];
+  for (const [name, def] of kinds){
+    const rows = []; for (let i=0;i<32;i++) rows.push(blank());
+    rows[0] = {hold_cs:0, rel_order:0, out_btn:0, stick_thresh:0, motion:[0,0],
+               motion_len:0, motion_step:0, label:name, present:true, ...def};
+    M.setRows(rows); M.setPick(null);
+    M.setCfg({macro_disable: 0}); M.setSnap({macro_disable: 0});
+    let threw = null;
+    try { M.macroRender(); } catch (e) { threw = e; }
+    ok(!threw, name + ' renders' + (threw ? ' (' + threw.message + ')' : ''));
+    ok(boxHtml.length > 0, name + ' produced markup');
+  }
+})();
+
+// A stick row's four direction outputs must actually appear, or the row is
+// unconfigurable however cleanly it renders.
+(function stickShowsDirections(){
+  console.log('a stick row exposes all four directions');
+  const rows = []; for (let i=0;i<32;i++) rows.push(blank());
+  rows[0] = {chord:0, gesture:0x80|0x20, flags:0x02, hold_cs:0,
+             keys:[0x1A,0x07,0x16,0x04], rel_order:0, out_btn:0, stick_thresh:48,
+             motion:[0,0], motion_len:0, motion_step:0, label:'wasd', present:true};
+  M.setRows(rows); M.setPick(null);
+  M.setCfg({macro_disable: 0}); M.setSnap({macro_disable: 0});
+  M.macroRender();
+  for (const arrow of ['\u2191','\u2192','\u2193','\u2190']){
+    ok(boxHtml.indexOf(arrow) >= 0, 'direction ' + arrow + ' is shown');
+  }
+  ok(/macroSetStickKey\(0, ?0/.test(boxHtml), 'each direction has its own key selector');
+  ok(/Left stick/.test(boxHtml), 'the input column names the stick');
+})();
+
+// The version is written in THREE places and derived from none of them: the
+// FW_VER_* constants in src/cmd.cpp, which the device reports over 0x7D-0x7F;
+// the heading in the portal; and -DVERSION on the cmake line, which only feeds
+// pico_set_program_version. Bumping the cmake flag alone builds a 1.43.0 image
+// that tells the portal it is 1.42.0 - which is exactly what shipped to a test
+// flash before this check existed. The CHANGELOG's newest heading is the
+// authority, since that is the release being cut.
+(function versionsAgree(){
+  console.log('the reported version agrees with the portal and the changelog');
+  const cmd = fs.readFileSync('src/cmd.cpp', 'utf8');
+  const num = n => { const m = new RegExp('\\b' + n + '\\s*=\\s*(\\d+)').exec(cmd); return m ? +m[1] : null; };
+  const fw = [num('FW_VER_MAJOR'), num('FW_VER_MINOR'), num('FW_VER_PATCH')];
+  ok(fw.every(v => v !== null), 'cmd.cpp declares all three FW_VER_* constants');
+  const fwStr = fw.join('.');
+  const chg = /^##\s*\[(\d+\.\d+\.\d+)\]/m.exec(fs.readFileSync('CHANGELOG.md', 'utf8'));
+  ok(!!chg, 'the changelog has a versioned heading');
+  if (chg) ok(chg[1] === fwStr,
+    'cmd.cpp reports ' + fwStr + ' and the changelog\'s newest entry is ' + chg[1]);
+  // The portal's heading is plain text in the HTML, not in the extracted JS.
+  const html = fs.readFileSync('ds5-config-portal.html', 'utf8');
+  const shown = [...html.matchAll(/>v(\d+\.\d+\.\d+)</g)].map(m => m[1]);
+  ok(shown.length > 0, 'the portal shows a version in its heading');
+  for (const v of new Set(shown))
+    ok(v === fwStr, 'the portal heading shows v' + v + ' and the firmware reports v' + fwStr);
+})();
+
+// The output numbering is PERSISTED in every saved macro and is split across
+// three ranges (controller 1-10 and 16-22, mouse 11-15, gyro 23-25). The portal
+// and src/macro.h / src/config.h each hold their own copy of that split, and
+// they have drifted twice: the flick outputs appeared in the controller picker
+// in 1.40.x, and the inject-mask readout named the wrong buttons. So check the
+// two copies against each other rather than trusting either.
+(function outputRangesMatchTheHeaders(){
+  console.log('output numbering agrees with the firmware headers');
+  const mh = fs.readFileSync('src/macro.h', 'utf8');
+  const ch = fs.readFileSync('src/config.h', 'utf8');
+  const num = (src, name) => {
+    const m = new RegExp('\\b' + name + '\\s*=\\s*(\\d+)').exec(src);
+    return m ? +m[1] : null;
+  };
+  const hMoutFirst = num(mh, 'MOUT_FIRST'), hMoutLast = num(mh, 'MOUT_LAST');
+  const hGoutFirst = num(mh, 'GOUT_FIRST'), hGoutLast = num(mh, 'GOUT_LAST');
+  const hT2Count   = num(ch, 'T2BTN_COUNT');
+  ok(hMoutFirst === M.MOUT_FIRST, 'MOUT_FIRST matches macro.h (' + hMoutFirst + ')');
+  ok(hMoutLast  === M.MOUT_LAST,  'MOUT_LAST matches macro.h (' + hMoutLast + ')');
+  ok(hGoutFirst === M.GOUT_FIRST, 'GOUT_FIRST matches macro.h (' + hGoutFirst + ')');
+  ok(hGoutLast  === M.GOUT_LAST,  'GOUT_LAST matches macro.h (' + hGoutLast + ')');
+  ok(hGoutFirst >= hT2Count, 'the gyro block starts above T2BTN_COUNT (' + hT2Count + ')');
+  // Every value in the table has to be reachable from exactly one picker, and
+  // no value may appear in both.
+  const btns = M.macroOutBtnValues(), mice = M.macroOutMouseValues();
+  ok(M.MACRO_OUT_BTNS.length === hGoutLast + 1,
+     'the name table covers every value up to GOUT_LAST and no further');
+  for (const v of btns){
+    ok(!M.macroIsMouseOut(v) && !M.macroIsGyroOut(v),
+       'controller picker value ' + v + ' (' + M.MACRO_OUT_BTNS[v] + ') is a controller button');
+  }
+  // The mouse picker's two ranges, NOT the span between them: 16-22 are
+  // controller buttons that sit between the mouse block and the gyro block.
+  const mouseRanges = [[hMoutFirst, hMoutLast], [hGoutFirst, hGoutLast]];
+  for (const [lo, hi] of mouseRanges) for (let v = lo; v <= hi; v++){
+    ok(mice.indexOf(v) >= 0, 'mouse picker offers ' + v + ' (' + M.MACRO_OUT_BTNS[v] + ')');
+    ok(btns.indexOf(v) < 0,  'and the controller picker does not');
+  }
+  for (let v = 1; v < hMoutFirst; v++) ok(btns.indexOf(v) >= 0, 'controller picker offers ' + v);
+  for (let v = hMoutLast + 1; v < hGoutFirst; v++) ok(btns.indexOf(v) >= 0, 'controller picker offers ' + v);
+  // A gyro row must come back as the MOUSE kind, or re-opening a saved profile
+  // shows it as an unrecognised controller button.
+  for (let v = hGoutFirst; v <= hGoutLast; v++){
+    ok(M.macroOutKind(0, {out_btn: v}) === 2, 'output ' + v + ' reads back as the mouse kind');
+  }
+  // ...and must NOT count towards the mouse interface, which is what decides
+  // whether saving the table re-enumerates the device.
+  const rows = []; for (let i=0;i<32;i++) rows.push(blank());
+  rows[0] = Object.assign(blank(), {chord: 0x20, out_btn: M.GOUT_FIRST, present: true});
+  M.setRows(rows); M.setCfg({macro_disable: 0}); M.setSnap({macro_disable: 0});
+  ok(M.macroAnyMouseEnabled() === false, 'a gyro row does not ask for the mouse interface');
+  rows[0].out_btn = M.MOUT_FIRST;
+  ok(M.macroAnyMouseEnabled() === true, 'but a real mouse row does');
 })();
 
 console.log('\nmacro panel handlers checked:', checked, '| problems:', bad);
