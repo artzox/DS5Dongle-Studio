@@ -31,6 +31,9 @@ const fn = new Function('window', 'document', 'navigator', 'location', js + `
            getRows: () => window._macroRows,
            setPick: p => { window._macroPick = p; },
            setSnap: x => { savedSnapshot = x; },
+           MOUT_FIRST, MOUT_LAST, GOUT_FIRST, GOUT_LAST,
+           MACRO_OUT_BTNS, macroIsMouseOut, macroIsGyroOut, macroOutKind,
+           macroOutBtnValues, macroOutMouseValues, macroAnyMouseEnabled,
            macroSetBit, getCfg: () => config,
            setCfg: c => { config = c; },
            setDev: d => { device = d; } };`);
@@ -170,6 +173,61 @@ ok(allPerm, 'picker always emits a valid release permutation');
   }
   ok(/macroSetStickKey\(0, ?0/.test(boxHtml), 'each direction has its own key selector');
   ok(/Left stick/.test(boxHtml), 'the input column names the stick');
+})();
+
+// The output numbering is PERSISTED in every saved macro and is split across
+// three ranges (controller 1-10 and 16-22, mouse 11-15, gyro 23-25). The portal
+// and src/macro.h / src/config.h each hold their own copy of that split, and
+// they have drifted twice: the flick outputs appeared in the controller picker
+// in 1.40.x, and the inject-mask readout named the wrong buttons. So check the
+// two copies against each other rather than trusting either.
+(function outputRangesMatchTheHeaders(){
+  console.log('output numbering agrees with the firmware headers');
+  const mh = fs.readFileSync('src/macro.h', 'utf8');
+  const ch = fs.readFileSync('src/config.h', 'utf8');
+  const num = (src, name) => {
+    const m = new RegExp('\\b' + name + '\\s*=\\s*(\\d+)').exec(src);
+    return m ? +m[1] : null;
+  };
+  const hMoutFirst = num(mh, 'MOUT_FIRST'), hMoutLast = num(mh, 'MOUT_LAST');
+  const hGoutFirst = num(mh, 'GOUT_FIRST'), hGoutLast = num(mh, 'GOUT_LAST');
+  const hT2Count   = num(ch, 'T2BTN_COUNT');
+  ok(hMoutFirst === M.MOUT_FIRST, 'MOUT_FIRST matches macro.h (' + hMoutFirst + ')');
+  ok(hMoutLast  === M.MOUT_LAST,  'MOUT_LAST matches macro.h (' + hMoutLast + ')');
+  ok(hGoutFirst === M.GOUT_FIRST, 'GOUT_FIRST matches macro.h (' + hGoutFirst + ')');
+  ok(hGoutLast  === M.GOUT_LAST,  'GOUT_LAST matches macro.h (' + hGoutLast + ')');
+  ok(hGoutFirst >= hT2Count, 'the gyro block starts above T2BTN_COUNT (' + hT2Count + ')');
+  // Every value in the table has to be reachable from exactly one picker, and
+  // no value may appear in both.
+  const btns = M.macroOutBtnValues(), mice = M.macroOutMouseValues();
+  ok(M.MACRO_OUT_BTNS.length === hGoutLast + 1,
+     'the name table covers every value up to GOUT_LAST and no further');
+  for (const v of btns){
+    ok(!M.macroIsMouseOut(v) && !M.macroIsGyroOut(v),
+       'controller picker value ' + v + ' (' + M.MACRO_OUT_BTNS[v] + ') is a controller button');
+  }
+  // The mouse picker's two ranges, NOT the span between them: 16-22 are
+  // controller buttons that sit between the mouse block and the gyro block.
+  const mouseRanges = [[hMoutFirst, hMoutLast], [hGoutFirst, hGoutLast]];
+  for (const [lo, hi] of mouseRanges) for (let v = lo; v <= hi; v++){
+    ok(mice.indexOf(v) >= 0, 'mouse picker offers ' + v + ' (' + M.MACRO_OUT_BTNS[v] + ')');
+    ok(btns.indexOf(v) < 0,  'and the controller picker does not');
+  }
+  for (let v = 1; v < hMoutFirst; v++) ok(btns.indexOf(v) >= 0, 'controller picker offers ' + v);
+  for (let v = hMoutLast + 1; v < hGoutFirst; v++) ok(btns.indexOf(v) >= 0, 'controller picker offers ' + v);
+  // A gyro row must come back as the MOUSE kind, or re-opening a saved profile
+  // shows it as an unrecognised controller button.
+  for (let v = hGoutFirst; v <= hGoutLast; v++){
+    ok(M.macroOutKind(0, {out_btn: v}) === 2, 'output ' + v + ' reads back as the mouse kind');
+  }
+  // ...and must NOT count towards the mouse interface, which is what decides
+  // whether saving the table re-enumerates the device.
+  const rows = []; for (let i=0;i<32;i++) rows.push(blank());
+  rows[0] = Object.assign(blank(), {chord: 0x20, out_btn: M.GOUT_FIRST, present: true});
+  M.setRows(rows); M.setCfg({macro_disable: 0}); M.setSnap({macro_disable: 0});
+  ok(M.macroAnyMouseEnabled() === false, 'a gyro row does not ask for the mouse interface');
+  rows[0].out_btn = M.MOUT_FIRST;
+  ok(M.macroAnyMouseEnabled() === true, 'but a real mouse row does');
 })();
 
 console.log('\nmacro panel handlers checked:', checked, '| problems:', bad);
