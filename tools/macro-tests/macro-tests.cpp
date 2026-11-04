@@ -859,6 +859,94 @@ static void t_oneshot_controller_output_pulses() {
     ok((both & (1u << (T2BTN_CIRCLE - 1))) != 0, "and the hold row's Circle is injected too");
 }
 
+static void t_gyro_ratchet() {
+    printf("gyro ratchet: a macro row pauses gyro aim, and never gets stuck paused\n");
+    fresh_device();
+    // A one-shot toggle row. Not HOLD: this is the latch, the whole point being
+    // that it survives the button being released.
+    MacroRecord tog = hold_macro(BTN_CROSS, 0, false);
+    tog.entry.flags   = 0;
+    tog.entry.out_btn = GOUT_TOGGLE;
+    macro_set_entry(0, tog);
+    enable_only(1u << 0);
+
+    ok(!macro_gyro_paused(), "gyro runs at rest");
+    btn_cross(true); tick(30); btn_cross(false); tick(30);
+    ok(macro_gyro_paused(), "one press pauses it");
+    ok(macro_inject_mask() == 0, "and injects no controller button");
+    ok(macro_mouse_buttons() == 0, "and no mouse button");
+    // The release is the part that matters: a pulse-style output would have
+    // expired by now and un-paused the gyro on its own.
+    g_now_ms += 1000;
+    macro_on_input(rpt, sizeof(rpt)); macro_task();
+    ok(macro_gyro_paused(), "the pause outlives the press - it is a latch, not a pulse");
+    btn_cross(true); tick(30); btn_cross(false); tick(30);
+    ok(!macro_gyro_paused(), "a second press resumes it");
+
+    // Explicit off / on rows, so a profile can bind two buttons instead of one.
+    fresh_device();
+    MacroRecord off = hold_macro(BTN_CROSS, 0, false);
+    off.entry.flags = 0; off.entry.out_btn = GOUT_OFF;
+    MacroRecord on  = hold_macro(BTN_R3, 0, false);
+    on.entry.flags  = 0; on.entry.out_btn = GOUT_ON;
+    macro_set_entry(0, off);
+    macro_set_entry(1, on);
+    enable_only((1u << 0) | (1u << 1));
+    btn_cross(true); tick(30); btn_cross(false); tick(30);
+    ok(macro_gyro_paused(), "the off row pauses");
+    btn_cross(true); tick(30); btn_cross(false); tick(30);
+    ok(macro_gyro_paused(), "and pressing it again keeps it paused, not toggled");
+    btn_r3(true); tick(30); btn_r3(false); tick(30);
+    ok(!macro_gyro_paused(), "the on row resumes");
+    btn_r3(true); tick(30); btn_r3(false); tick(30);
+    ok(!macro_gyro_paused(), "and again leaves it running");
+
+    // A HOLD row is momentary: paused exactly while the chord is down.
+    fresh_device();
+    MacroRecord held = hold_macro(BTN_CROSS, 0, false);
+    held.entry.flags   = MACRO_FLAG_HOLD;
+    held.entry.out_btn = GOUT_OFF;
+    macro_set_entry(0, held);
+    enable_only(1u << 0);
+    ok(!macro_gyro_paused(), "hold row: running before the press");
+    btn_cross(true); tick(30);
+    ok(macro_gyro_paused(), "paused while held");
+    btn_cross(false); tick(60);
+    ok(!macro_gyro_paused(), "and running again the moment it is released");
+
+    // Unticking the last row must not leave the gyro dead with nothing able to
+    // revive it - the frozen-stick failure in exactly this early-return path.
+    fresh_device();
+    macro_set_entry(0, tog);
+    enable_only(1u << 0);
+    btn_cross(true); tick(30); btn_cross(false); tick(30);
+    ok(macro_gyro_paused(), "paused with the row enabled");
+    g_cfg.macro_disable = MACRO_NONE_ENABLED;
+    macro_on_input(rpt, sizeof(rpt)); macro_task();
+    ok(!macro_gyro_paused(), "disabling every macro frees the gyro");
+
+    // A reconnect or host suspend resumes it too.
+    fresh_device();
+    macro_set_entry(0, tog);
+    enable_only(1u << 0);
+    btn_cross(true); tick(30); btn_cross(false); tick(30);
+    ok(macro_gyro_paused(), "paused before the reset");
+    macro_reset();
+    ok(!macro_gyro_paused(), "macro_reset() resumes it");
+
+    // It is not a mouse output: it must never be what brings the mouse
+    // interface up, or binding the ratchet would re-enumerate the device.
+    fresh_device();
+    macro_set_entry(0, tog);
+    enable_only(1u << 0);
+    ok(!macro_any_mouse_output(g_cfg.macro_disable),
+       "a gyro row does not count as a mouse output");
+    ok(!macro_is_mouse_out(GOUT_TOGGLE) && !macro_is_mouse_out(GOUT_OFF) &&
+       !macro_is_mouse_out(GOUT_ON), "and sits outside the mouse output range");
+    // And outside the controller range, so it cannot alias a gamepad button.
+    ok(GOUT_FIRST >= T2BTN_COUNT, "gyro outputs are numbered above every controller button");
+}
+
 static void t_stick_hysteresis() {
     printf("stick: resting on the threshold must not chatter\n");
     fresh_device();
@@ -920,6 +1008,7 @@ int main() {
     t_disabling_all_macros_frees_the_stick();
     t_double_tap();
     t_oneshot_controller_output_pulses();
+    t_gyro_ratchet();
     t_stick_hysteresis();
     t_hold_released_on_suspend();
     t_disabled_hold_row_is_inert();
