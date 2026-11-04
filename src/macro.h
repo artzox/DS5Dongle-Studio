@@ -247,6 +247,38 @@ static inline bool macro_is_mouse_out(uint8_t out_btn) {
     return out_btn >= MOUT_FIRST && out_btn <= MOUT_LAST;
 }
 
+// --- Gyro aim outputs (v1.43.0) ----------------------------------------------
+// A macro row can PAUSE gyro aiming instead of sending anything. This is the
+// ratchet without the touchpad: gyro_mode 4 pauses while a finger rests on the
+// pad, which is useless in a menu you need both thumbs for, and holding the pad
+// is exactly what the user asked not to have to do.
+//
+// Nothing about the USB side changes. The mouse interface stays enumerated and
+// the HID descriptors are untouched - a game that has decided it is talking to
+// a mouse keeps its prompts and its HUD. All that stops is the gyro's
+// CONTRIBUTION, so the pointer simply holds still. Suspending the interface
+// instead would re-enumerate the device mid-game, which is the problem this
+// feature exists to avoid, not a way to implement it.
+//
+// These values continue the same append-only numbering as T2BTN_* and MOUT_*,
+// starting ABOVE T2BTN_COUNT (23) so no saved macro changes meaning. They are
+// deliberately NOT inside macro_is_mouse_out()'s range: they emit no mouse
+// report and must never make the mouse interface exist on their own.
+constexpr uint8_t GOUT_FIRST  = 23;
+constexpr uint8_t GOUT_TOGGLE = 23;   // flip
+constexpr uint8_t GOUT_OFF    = 24;   // pause  (HOLD row: paused while held)
+constexpr uint8_t GOUT_ON     = 25;   // resume (HOLD row: running while held)
+constexpr uint8_t GOUT_LAST   = 25;
+static inline bool macro_is_gyro_out(uint8_t out_btn) {
+    return out_btn >= GOUT_FIRST && out_btn <= GOUT_LAST;
+}
+
+// Whether gyro aiming is paused right now. Consumed by apply_gyro_stick() in
+// main.cpp. RAM only, never persisted and never saved into a slot: the pause is
+// a per-session, per-game thing, so a slot switch clears it (slot_activate).
+bool macro_gyro_paused();
+void macro_gyro_resume();
+
 struct __attribute__((packed)) MacroEntry {
     uint32_t chord;       // logical button mask (input_buttons.h); 0 if gesture
     uint8_t  gesture;     // GESTURE_NONE or GEST_* bits

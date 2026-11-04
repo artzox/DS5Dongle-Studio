@@ -464,10 +464,12 @@ static bool get_config_field_from(const Config_body &config, uint8_t field_id, u
         // above even while it was working correctly.
         //   bit0 left stick centred, bit1 right stick centred,
         //   bit2 macro engine wants the report rewritten this tick
+        //   bit3 gyro aim paused by a macro ratchet (GOUT_* in macro.h)
         case 0x8c: { extern bool macro_report_active();
                      const uint8_t v = (uint8_t) ((macro_suppress_stick(false) ? 1 : 0) |
                                                   (macro_suppress_stick(true)  ? 2 : 0) |
-                                                  (macro_report_active()       ? 4 : 0));
+                                                  (macro_report_active()       ? 4 : 0) |
+                                                  (macro_gyro_paused()         ? 8 : 0));
                      return write_config_value(buffer, bufsize, v); }
         // Keyboard/mouse output right now: keys held, the first key's HID usage,
         // and the mouse button mask.

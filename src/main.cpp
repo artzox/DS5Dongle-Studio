@@ -1083,6 +1083,12 @@ static inline void __not_in_flash_func(apply_gyro_stick)(uint8_t *d) {
 
 
     if (cfg.gyro_mode == 0) return;
+    // A macro ratchet can pause gyro aiming outright. Placed HERE, below every
+    // stick feature above and above every activation gate below, so the pause
+    // stops the gyro and nothing else: flick stick, stick-to-mouse,
+    // touchpad-to-mouse and tilt steering all keep working, and the mouse
+    // interface is not touched at all. See macro.h (GOUT_*).
+    if (macro_gyro_paused()) return;
     // Activation schemes (industry set: ADS-gated, always-on, touch-enable, ratchet):
     //   1 = only while L2 (aim) held past ~12%
     //   2 = always on

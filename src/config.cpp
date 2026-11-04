@@ -647,6 +647,11 @@ uint8_t slot_activate(uint8_t idx, bool &needs_reenum, uint8_t &fail_stage) {
                    // The mouse is its own interface, and it implies the keyboard -
                    // so the keyboard test above does not cover losing the mouse.
                    (usb_mouse_iface_needed(o) != usb_mouse_iface_needed(n));
+    // A gyro-aim ratchet never crosses a slot switch. It is set for one game's
+    // menus, so carrying it into the next profile would leave gyro mysteriously
+    // dead there - and the row that could clear it may not even exist on the
+    // new profile. RAM only, so there is nothing to un-persist.
+    macro_gyro_resume();
     active_profile_set(idx); // record the loaded slot (RAM) for the portal readout
     // Persist. flash_safe_execute parks core1 with a 1 s timeout; at game
     // launch core1 is at its busiest (BT stream + haptics), which is exactly
