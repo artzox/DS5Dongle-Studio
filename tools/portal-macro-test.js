@@ -175,6 +175,32 @@ ok(allPerm, 'picker always emits a valid release permutation');
   ok(/Left stick/.test(boxHtml), 'the input column names the stick');
 })();
 
+// The version is written in THREE places and derived from none of them: the
+// FW_VER_* constants in src/cmd.cpp, which the device reports over 0x7D-0x7F;
+// the heading in the portal; and -DVERSION on the cmake line, which only feeds
+// pico_set_program_version. Bumping the cmake flag alone builds a 1.43.0 image
+// that tells the portal it is 1.42.0 - which is exactly what shipped to a test
+// flash before this check existed. The CHANGELOG's newest heading is the
+// authority, since that is the release being cut.
+(function versionsAgree(){
+  console.log('the reported version agrees with the portal and the changelog');
+  const cmd = fs.readFileSync('src/cmd.cpp', 'utf8');
+  const num = n => { const m = new RegExp('\\b' + n + '\\s*=\\s*(\\d+)').exec(cmd); return m ? +m[1] : null; };
+  const fw = [num('FW_VER_MAJOR'), num('FW_VER_MINOR'), num('FW_VER_PATCH')];
+  ok(fw.every(v => v !== null), 'cmd.cpp declares all three FW_VER_* constants');
+  const fwStr = fw.join('.');
+  const chg = /^##\s*\[(\d+\.\d+\.\d+)\]/m.exec(fs.readFileSync('CHANGELOG.md', 'utf8'));
+  ok(!!chg, 'the changelog has a versioned heading');
+  if (chg) ok(chg[1] === fwStr,
+    'cmd.cpp reports ' + fwStr + ' and the changelog\'s newest entry is ' + chg[1]);
+  // The portal's heading is plain text in the HTML, not in the extracted JS.
+  const html = fs.readFileSync('ds5-config-portal.html', 'utf8');
+  const shown = [...html.matchAll(/>v(\d+\.\d+\.\d+)</g)].map(m => m[1]);
+  ok(shown.length > 0, 'the portal shows a version in its heading');
+  for (const v of new Set(shown))
+    ok(v === fwStr, 'the portal heading shows v' + v + ' and the firmware reports v' + fwStr);
+})();
+
 // The output numbering is PERSISTED in every saved macro and is split across
 // three ranges (controller 1-10 and 16-22, mouse 11-15, gyro 23-25). The portal
 // and src/macro.h / src/config.h each hold their own copy of that split, and
