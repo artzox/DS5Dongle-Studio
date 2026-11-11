@@ -37,7 +37,8 @@ All notable changes to this project are documented here.
 
 ### Upgrading
 
-- **HidHide and DS4Windows users: re-add the controller.** Changing the serial
+- **HidHide users: re-add the controller, should work fine in DS4Windows
+  without re-adding**. Changing the serial
   changes the device path, so both register the bridge as a *new* device.
   Existing HidHide entries point at the old one and will not match.
 - Windows also treats the audio endpoint as new, so the default-device choice
