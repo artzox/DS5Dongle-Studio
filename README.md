@@ -23,7 +23,7 @@ don't — all configurable from a web-based portal.
 > - **Raspberry Pi Pico 2 W** — the released `.uf2` is built for this board. Flash
 >   it and you're done.
 > - **Waveshare RP2350B-Plus-W** (USB-C, 16 MB flash, RM2 wireless) — a prebuilt
->   `ds5-v1.42.0-waveshare.uf2` now ships with each release; flash that and you're
+>   `ds5-v1_44_0-waveshare.uf2` now ships with each release; flash that and you're
 >   done. It is built against pico-sdk 2.2.0, as this board requires.
 >   *It has not yet been confirmed on hardware by anyone — if you have this board,
 >   a report either way is very welcome.* To build it yourself instead, one command:
@@ -285,7 +285,7 @@ below.
    each have their own prebuilt firmware, or build it yourself; this will not run
    on the original Pico W.)* Hold the BOOTSEL button while plugging in the board
    (or triple-click BOOTSEL on an already-running unit), then copy
-   `ds5-v1.42.0.uf2` (Pico 2 W) or `ds5-v1.42.0-waveshare.uf2` (Waveshare) to the
+   `ds5-v1_44_0.uf2` (Pico 2 W) or `ds5-v1_44_0-waveshare.uf2` (Waveshare) to the
    `RPI-RP2` drive that appears.
    - **You do not normally need `flash_nuke.uf2`** (the one supplied is built for
      the Pico 2 W). Settings and saved profile
@@ -375,8 +375,45 @@ close DS4Windows and relaunch it before changing any other setting.
 > **Mixing native DualSense and virtual controllers** in
 > `automation/AUTOMATION-README.md`.
 
+**3. Keep *Hide USB serial number* on** (Device & Connection). It is on by
+default from 1.44.0 and matches what a real DualSense does — a cabled controller
+reports no serial at all. If you turn it off on a **DualSense Edge** profile,
+Microsoft GameInput takes over the audio-driven haptics path and native haptics
+and controller audio stop arriving, while adaptive triggers keep working. See
+*Known issues* below.
+
 Also worth knowing for native games: keep **Wake PC on PS Button** *off* in those
 profiles — see the wake note above for why.
+
+### Known issues
+
+**Microsoft GameInput vs the DualSense Edge identity.** After the November 2026
+Windows update that shipped a new GameInput, Edge users lost native haptics and
+controller audio in several titles — Spider-Man 2, Ratchet & Clank: Rift Apart,
+Indiana Jones and the Great Circle, Silent Hill Townfall, Returnal, God of War
+Ragnarök — while adaptive triggers carried on working. The split is the giveaway:
+triggers travel over HID, haptics travel over USB audio.
+
+This is fixed from **1.44.0** by reporting no USB serial number, which is what a
+real controller does. If you are on an older build, or you have deliberately
+turned the setting off, there are two other routes:
+
+- Set **Controller Type** to *DualSense (DS5)*. The conflict is specific to the
+  Edge identity, so presenting as a standard DualSense avoids it — at the cost
+  of the Edge identity and its report descriptor.
+- Disable GameInput for the individual game, which forces it back onto Sony's
+  drivers. Set `DisableGameInput` (DWORD `1`) under
+  `HKLM\SOFTWARE\Microsoft\GameInputRedist\Exe\<game>.exe`, using the exact
+  executable name from Task Manager → *Details*. This is an undocumented
+  Microsoft value and may stop working in a later redistributable. Note that
+  stopping the GameInput *services* does not help — the redistributable loads
+  into the game process.
+
+To tell this apart from everything else that can silence haptics, use the live
+readout on the **Device & Connection** tab while the game runs. If it shows
+`detected channels=4` with `ch0-1` and `ch2-3` both sitting at 0–1, the dongle is
+being handed a native haptic stream full of silence: the game is not sending
+anything, and the fault is on the Windows side rather than in the bridge.
 
 ## Suggested setup
 
@@ -2092,9 +2129,9 @@ don't affect you.
 
 ## Files in this release
 
-- `ds5-v1.42.0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
+- `ds5-v1_44_0.uf2` — the firmware for the **Raspberry Pi Pico 2 W** (flash this;
   reports version 1.42.0)
-- `ds5-v1.42.0-waveshare.uf2` — the same firmware for the **Waveshare
+- `ds5-v1_44_0-waveshare.uf2` — the same firmware for the **Waveshare
   RP2350B-Plus-W** (built against pico-sdk 2.2.0)
 - `ds5-config-portal.html` — the web configuration portal (download and open)
 - `flash_nuke.uf2` — config-reset utility. **Not needed for a normal upgrade** —

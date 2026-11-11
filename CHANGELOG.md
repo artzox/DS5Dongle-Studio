@@ -2,6 +2,77 @@
 
 All notable changes to this project are documented here.
 
+## [1.44.0] — 2026-11-11
+
+### Fixed
+
+- **Native haptics and controller audio stopped working in many games, while
+  adaptive triggers kept working.** Affected DualSense **Edge** users after the
+  November 2026 Windows update that brought a new Microsoft GameInput. Reported
+  in Marvel's Spider-Man 2, Ratchet & Clank: Rift Apart, Indiana Jones and the
+  Great Circle, Silent Hill Townfall, Returnal and God of War Ragnarök.
+
+  The cause was a fidelity gap in this bridge, not a Windows bug to work around.
+  A real DualSense exposes **no USB serial number** — plug one in by cable and
+  Windows gives it a port-derived device path. The bridge was reporting the
+  board's own unique id and getting a persistent path instead. That was the only
+  respect in which the emulated device differed from a real controller, and
+  GameInput — which gained *"support for advanced haptics for audio-driven
+  devices including the PlayStation®5 DualSense®"* in v2.0 — treats the two
+  cases differently. With a serial present, on the Edge identity, it takes over
+  the audio-driven haptics path and the game's haptics and controller audio
+  never arrive. Adaptive triggers travel over HID and so were unaffected, which
+  is what made this so confusing to diagnose.
+
+  The bridge now reports no serial number, matching real hardware. A new
+  **Device & Connection → Hide USB serial number** setting exposes it, and a
+  one-time migration turns it on for every existing profile — the field was
+  never shown in the portal before now, so no deliberate choice is being
+  overridden. `CONFIG_VERSION` moves to 20.
+
+  Diagnosed with the Device tab's live audio readout: the dongle was receiving a
+  full 4-channel stream (`bytes_read=384`, `detected channels=4`) carrying pure
+  silence on every channel, which is what ruled out the firmware and pointed at
+  the host.
+
+### Upgrading
+
+- **HidHide and DS4Windows users: re-add the controller.** Changing the serial
+  changes the device path, so both register the bridge as a *new* device.
+  Existing HidHide entries point at the old one and will not match.
+- Windows also treats the audio endpoint as new, so the default-device choice
+  and per-device volume for it start fresh.
+- Without a serial the device path is port-based, so moving the dongle to a
+  different USB port re-registers it — exactly as a real controller behaves.
+- **WebHID grants become session-only.** Browsers require a serial number for a
+  permanent grant, so the portal and the automation profile pages will ask to
+  Connect again after the browser fully closes. `automation\ds5-policy.bat`
+  installs the Chromium `WebHidAllowDevicesForUrls` policy and removes that
+  prompt for good; it is now effectively required for frictionless automation.
+- All 23 profiles shipped under `automation\profiles\` carry the new setting.
+
+### Notes
+
+- If you would rather keep the serial — running two dongles and telling them
+  apart by device path, say — untick the new setting and instead disable
+  GameInput per game, which achieves the same result from the Windows side:
+  set `DisableGameInput` (DWORD `1`) under
+  `HKLM\SOFTWARE\Microsoft\GameInputRedist\Exe\<game>.exe`. This is an
+  undocumented Microsoft value and may change.
+- Setting **Controller Type** to *DualSense (DS5)* also avoids the conflict,
+  since it is specific to the Edge identity, but it costs you the Edge identity
+  and report descriptor for no benefit now.
+
+### Internal
+
+- `tools/portal-macro-test.js` gains a guard for the serial default and its
+  migration, including that the stored config version is read before
+  `config_valid()` stamps the current one over it.
+- The 1.43.0 cross-checks (version agreement, output numbering) were shipped to
+  `tools/macro-tests/portal-macro-test.js`, which the release gate does not run.
+  They are now at `tools/portal-macro-test.js`, where `run-portal-tests.sh`
+  executes them.
+
 ## [1.43.0] — 2026-11-04
 
 ### Added

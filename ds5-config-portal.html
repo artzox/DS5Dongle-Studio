@@ -211,6 +211,7 @@ const SECTIONS = [
     [0xb9,'player_led_mode','u8','Player LEDs','select',{0:'Passthrough',1:'Off',2:'Battery gauge'}],
     [0xba,'player_led_bright','u8','Player LED brightness','select',{0:'Bright',1:'Mid',2:'Dim'}],
     [0x11,'enable_wake','u8','Wake PC on PS Button','bool'],
+    [0x0d,'disable_usb_sn','u8','Hide USB serial number','bool'],
   ]},
   { title: 'Battery Notification', fields: [
     [0x8e,'batt_notify_enable','u8','Battery notification on the controller lightbar','bool'],
@@ -408,6 +409,7 @@ const DESCRIPTIONS = {
   disable_inactive_disconnect: "Keeps the controller connected even when left idle.",
   disable_pico_led: "Turns off the Pico board's on-board LED.",
   enable_wake: "Lets a PS-button press wake the PC from sleep (set per profile).",
+  disable_usb_sn: "Stops the dongle reporting a USB serial number. A controller plugged in by cable reports none, so Windows gives it a port-based device path; the dongle reports the board's own serial and gets a persistent one instead. Leave this on to match a cabled controller exactly \u2014 Microsoft GameInput breaks native haptics on the Edge identity when a serial is present. Changing it re-enumerates the device, so HidHide and DS4Windows see a new device and their entries need re-adding.",
   // Native Haptics Filter
   haptics_aa: "How much the native haptics are smoothed to remove digital grit.",
   // Rumble to Trigger
