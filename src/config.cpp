@@ -17,7 +17,7 @@
 #include "pico/flash.h"
 
 constexpr uint32_t CONFIG_MAGIC = 0x66ccff00;
-constexpr uint16_t CONFIG_VERSION = 19;
+constexpr uint16_t CONFIG_VERSION = 20;
 // btstack's TLV flash bank (BT link keys + this project's pairing blacklist tag)
 // occupies the LAST TWO flash sectors by pico-sdk default
 // (PICO_FLASH_BANK_STORAGE_OFFSET) - and config + profile slots used to sit in
@@ -51,6 +51,9 @@ const Config *flash_config() {
 }
 
 void config_valid() {
+    // The STORED version, captured before the stamp further down overwrites it.
+    // One-time migrations read this; nothing else should need it.
+    const uint8_t stored_version = config.body.config_version;
     // valid config and set default value
     if (config.magic != CONFIG_MAGIC) {
         config.magic = CONFIG_MAGIC;
@@ -113,9 +116,34 @@ void config_valid() {
         body->lock_volume = 0;
         printf("[Config] lock_volume is invalid\n");
     }
+    // Default is 1 - NO serial number - because that is what a real DualSense
+    // does. A controller plugged in by cable reports no iSerialNumber at all, so
+    // Windows gives it a port-derived instance path; this bridge reported the
+    // board's own unique id and got a persistent one instead. That was the only
+    // respect in which the emulated device differed from the real one, and
+    // Microsoft GameInput treats the two cases differently: with a serial, on
+    // the DualSense Edge identity, it takes over the audio-driven haptics path
+    // and the game's haptics and controller audio never arrive, while adaptive
+    // triggers - which travel over HID - keep working. Matching the real
+    // hardware is the fix, not a workaround. See the 1.44.0 changelog.
     if (body->disable_usb_sn > 1) {
-        body->disable_usb_sn = 0;
+        body->disable_usb_sn = 1;
         printf("[Config] Warning: disable_usb_sn is invalid\n");
+    }
+    // ONE-TIME MIGRATION to CONFIG_VERSION 20. Slots saved before it store a
+    // hard 0 here, which no clamp would ever touch, so without this every
+    // existing profile would keep the serial and stay broken until the user
+    // found a setting that had never been shown in the portal. Nobody can have
+    // chosen 0 deliberately - the field was not exposed before 1.44.0 - so no
+    // user intent is being overridden.
+    //
+    // This runs on load AND inside slot_activate(), so a slot is migrated as it
+    // becomes live without rewriting any flash sector. The stored slot keeps its
+    // old version until it is saved again, so this simply reapplies each time -
+    // idempotent - and it stops the moment the user resaves at v20, from which
+    // point their own choice is honoured.
+    if (stored_version < 20) {
+        body->disable_usb_sn = 1;
     }
     if (body->ps_shortcut_enabled > 1) {
         body->ps_shortcut_enabled = 0;
