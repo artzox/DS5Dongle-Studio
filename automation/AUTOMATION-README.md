@@ -242,7 +242,14 @@ the policy exists; `ds5-policy-remove.bat` undoes it completely.
 Without the policy, WebHID grants for the dongle are session-only (the
 DualSense-authentic USB identity reports no serial number, which browsers
 require for permanent grants), so profile pages ask to Connect again after all
-browser windows have been closed. As a manual fallback,
+browser windows have been closed.
+
+> **From 1.44.0 this applies to everyone.** Hiding the USB serial number is now
+> the default, because reporting one breaks native haptics on the DualSense Edge
+> identity under Microsoft GameInput (see the main README's *Known issues*).
+> That makes `ds5-policy.bat` effectively required rather than optional: without
+> it every profile page asks to Connect once per browser session. The 23
+> profiles shipped in `profiles\` all set it. As a manual fallback,
 `ds5-global-start.ps1 -GrantSetup` opens a profile page unminimized for a
 per-session Connect click.
 
