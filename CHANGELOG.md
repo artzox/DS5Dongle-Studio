@@ -44,11 +44,17 @@ All notable changes to this project are documented here.
   and per-device volume for it start fresh.
 - Without a serial the device path is port-based, so moving the dongle to a
   different USB port re-registers it — exactly as a real controller behaves.
-- **WebHID grants become session-only.** Browsers require a serial number for a
-  permanent grant, so the portal and the automation profile pages will ask to
-  Connect again after the browser fully closes. `automation\ds5-policy.bat`
-  installs the Chromium `WebHidAllowDevicesForUrls` policy and removes that
-  prompt for good; it is now effectively required for frictionless automation.
+- **Re-run `automation\ds5-policy.bat`**, even if you ran it before. Browsers
+  require a serial number for a permanent WebHID grant, so without one every
+  profile switch that re-enumerates the device leaves the page without
+  permission for it, and the portal reports *"Some values could not be read"*.
+  The policy grants by VID/PID instead, which survives re-enumeration. It also
+  now covers the hosted portal at `https://artzox.github.io` alongside
+  `file:///` and the automation's loopback server — an older installed copy
+  does not, and the policy only applies to the origins listed in it. Close all
+  browser windows afterwards; Chromium reads it only on a full restart.
+- The portal now says so directly when it happens, rather than suggesting
+  *Re-read*, which cannot recover a lost grant.
 - All 23 profiles shipped under `automation\profiles\` carry the new setting.
 
 ### Notes

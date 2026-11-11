@@ -419,6 +419,35 @@ readout on the **Device & Connection** tab while the game runs. If it shows
 being handed a native haptic stream full of silence: the game is not sending
 anything, and the fault is on the Windows side rather than in the bridge.
 
+**"Some values could not be read" after switching profiles.** From 1.44.0 the
+bridge reports no USB serial number, and a browser will not keep a permanent
+WebHID grant for a device that has none. Any profile switch that re-enumerates
+the device — a native and a non-native profile differ on **Wake PC on PS
+Button**, which is one of the settings that forces a reconnect — therefore hands
+the page a device it no longer has permission for. Reads then fail en masse and
+the portal reports it.
+
+Fix it once with `automation\ds5-policy.bat` (admin, self-elevates). It installs
+the Chromium `WebHidAllowDevicesForUrls` policy, which grants by **VID/PID**
+rather than per device, so it survives every re-enumeration. Close **all**
+browser windows afterwards — Chromium only picks the policy up on a full
+restart — and the portal will reconnect on its own from then on.
+
+Two things that catch people out:
+
+- **The policy only covers the origins listed in it.** As shipped that is
+  `file:///`, `http://127.0.0.1:8377` and `https://artzox.github.io`. If you
+  load the portal from somewhere else — your own fork's Pages URL, another local
+  server — add that origin to the `urls` array in `ds5-policy.bat` before
+  running it, or the grant will not apply to the page you are actually using.
+- **Re-run it when upgrading to 1.44.0**, even if you ran it before: the shipped
+  policy gained the hosted-portal origin, and an older installed copy does not
+  have it.
+
+Without the policy the portal still works — you just have to click **Connect**
+again after each re-enumerating profile switch. `ds5-policy-remove.bat` undoes
+it completely.
+
 ## Suggested setup
 
 These are good starting values for using auto-haptics with audio passthrough and
