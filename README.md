@@ -78,6 +78,7 @@ to RAM so native fine haptics and controller audio work without overclocking.
   - [Tilt steering (new in 1.39.4)](#tilt-steering-new-in-1394)
   - [Macros (new in 1.19.0)](#macros-new-in-1190)
   - [Device & Connection](#device--connection)
+    - [Hide USB serial number (new in 1.44.0)](#hide-usb-serial-number-new-in-1440)
   - [Battery notification (new in 1.35.0)](#battery-notification-new-in-1350)
   - [Player LEDs (new in 1.41.6)](#player-leds-new-in-1416)
   - [Advanced — BT Latency (experimental)](#advanced--bt-latency-experimental)
@@ -380,7 +381,10 @@ default from 1.44.0 and matches what a real DualSense does — a cabled controll
 reports no serial at all. If you turn it off on a **DualSense Edge** profile,
 Microsoft GameInput takes over the audio-driven haptics path and native haptics
 and controller audio stop arriving, while adaptive triggers keep working. See
-*Known issues* below.
+*Known issues* below. It has two side effects worth knowing — two dongles can no
+longer be told apart, and unattended profile switching needs
+`automation\ds5-policy.bat` — both covered under
+[Hide USB serial number](#hide-usb-serial-number-new-in-1440).
 
 Also worth knowing for native games: keep **Wake PC on PS Button** *off* in those
 profiles — see the wake note above for why.
@@ -1805,6 +1809,37 @@ the whole configuration is applied in one command.
 | Player LED brightness | Bright / Mid / Dim | Bright | Independent of the lightbar. Kept in every mode, including Passthrough, where the game still chooses which LEDs are lit. Bright leaves brightness to the game |
 | Disable Pico LED | on/off | off | Turn off the Pico's onboard LED |
 | Wake PC on PS Button | on/off | off | Assert USB remote wakeup on PS press to wake the host |
+| Hide USB serial number | on/off | **on** | Report no USB serial, as a real DualSense does. Leave it on — turning it off breaks native haptics on the Edge identity under Microsoft GameInput. Has two side effects; see below. Changing it re-enumerates the device |
+
+#### Hide USB serial number *(new in 1.44.0)*
+
+A DualSense plugged in by cable reports no `iSerialNumber`, so Windows derives
+its device path from the hub and port. This bridge used to report the board's
+own unique id and get a persistent path instead — the one respect in which it
+did not match real hardware, and the reason native haptics broke on the Edge
+identity under Microsoft GameInput. It is on by default from 1.44.0 and existing
+profiles are migrated to it.
+
+Matching real hardware costs two things, both consequences of the device path no
+longer being stable:
+
+- **Two dongles can no longer be told apart.** With no serial, Windows
+  identifies each by the port it is plugged into, so swapping ports swaps their
+  identity and anything pinned to a device path — HidHide rules, per-device
+  audio settings, WebHID grants — follows the port rather than the dongle. If
+  you run two and need to distinguish them, turn this off on one of them and
+  accept the GameInput conflict on that one, or keep it to non-native profiles.
+- **Unattended profile switching needs the browser policy.** Browsers only grant
+  WebHID permanently to a device that has a serial number, so without one every
+  profile page asks to Connect once per browser session — which stops Playnite
+  switching profiles on its own. Run `automation\ds5-policy.bat` once; it
+  installs the Chromium `WebHidAllowDevicesForUrls` policy and the prompt is
+  gone for good. It was optional before 1.44.0 and is effectively required now.
+  `ds5-policy-remove.bat` undoes it.
+
+Moving the dongle to a different USB port also re-registers it, exactly as
+moving a real controller would. If neither trade-off suits you and you are on an
+Edge, the alternatives are in *Known issues*.
 
 ### Battery notification *(new in 1.35.0)*
 
