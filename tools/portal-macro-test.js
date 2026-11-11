@@ -201,6 +201,33 @@ ok(allPerm, 'picker always emits a valid release permutation');
     ok(v === fwStr, 'the portal heading shows v' + v + ' and the firmware reports v' + fwStr);
 })();
 
+// The USB serial default is a flash-data behaviour with no runtime test around
+// it, and getting it wrong is invisible until a game loses haptics. A real
+// DualSense reports no serial; reporting one makes Microsoft GameInput take
+// over the audio-driven haptics path on the Edge identity. Guard both halves:
+// the default, and the one-time migration that carries existing slots over.
+(function usbSerialDefaults(){
+  console.log('the USB serial number defaults to hidden, and old slots migrate');
+  const cfg = fs.readFileSync('src/config.cpp', 'utf8');
+  const ver = /CONFIG_VERSION\s*=\s*(\d+)/.exec(cfg);
+  ok(!!ver, 'config.cpp declares CONFIG_VERSION');
+  // The clamp that fresh flash (0xFF) lands on.
+  const clamp = /disable_usb_sn\s*>\s*1\s*\)\s*\{\s*\n\s*body->disable_usb_sn\s*=\s*(\d+)\s*;/.exec(cfg);
+  ok(!!clamp, 'the disable_usb_sn clamp is present');
+  if (clamp) ok(clamp[1] === '1',
+    'a fresh config defaults to NO serial (found ' + clamp[1] + ')');
+  // The migration, and that it is keyed on the version it was introduced in.
+  const mig = /stored_version\s*<\s*(\d+)\s*\)\s*\{\s*\n\s*body->disable_usb_sn\s*=\s*1\s*;/.exec(cfg);
+  ok(!!mig, 'the one-time migration for existing slots is present');
+  if (mig && ver) ok(Number(mig[1]) <= Number(ver[1]),
+    'the migration threshold (' + mig[1] + ') is at or below CONFIG_VERSION (' + ver[1] + ')');
+  // It must read the version BEFORE config_valid() stamps the current one over it.
+  const order = cfg.indexOf('const uint8_t stored_version');
+  const stamp = cfg.indexOf('body->config_version = CONFIG_VERSION');
+  ok(order > 0 && stamp > 0 && order < stamp,
+     'the stored version is captured before it is stamped');
+})();
+
 // The output numbering is PERSISTED in every saved macro and is split across
 // three ranges (controller 1-10 and 16-22, mouse 11-15, gyro 23-25). The portal
 // and src/macro.h / src/config.h each hold their own copy of that split, and
