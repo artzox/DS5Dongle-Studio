@@ -889,9 +889,17 @@ $policyBat = @'
 @echo off
 REM ds5-policy.bat (generated) - RECOMMENDED one-time setup. Writes the
 REM Chromium policy "WebHidAllowDevicesForUrls" so the dongle (VID 054C,
-REM PID 0CE6/0DF2) is PRE-GRANTED to the profile pages: no Connect click is
-REM ever needed and nothing is lost when the browser closes or clears site
-REM data. Side effect: Edge/Chrome show "Managed by your organization".
+REM PID 0CE6/0DF2) is PRE-GRANTED to the profile pages and to the hosted
+REM portal at https://artzox.github.io: no Connect click is ever needed and
+REM nothing is lost when the browser closes or clears site data.
+REM
+REM REQUIRED from firmware 1.44.0. The bridge now reports no USB serial
+REM number, matching a real DualSense, and a browser will not keep a WebHID
+REM grant for a device without one - so after every profile switch that
+REM re-enumerates, the page loses the device and reads start failing
+REM ("Some values could not be read"). This policy grants by VID/PID
+REM instead, which survives re-enumeration.
+REM Side effect: Edge/Chrome show "Managed by your organization".
 REM Fully reversible: run ds5-policy-remove.bat.
 REM Requires admin (self-elevates). Restart the browser after running.
 
@@ -902,7 +910,7 @@ if errorlevel 1 (
   exit /b
 )
 
-set "POLICY=[{\"devices\":[{\"vendor_id\":1356,\"product_id\":3302},{\"vendor_id\":1356,\"product_id\":3570}],\"urls\":[\"file:///\",\"http://127.0.0.1:8377\"]}]"
+set "POLICY=[{\"devices\":[{\"vendor_id\":1356,\"product_id\":3302},{\"vendor_id\":1356,\"product_id\":3570}],\"urls\":[\"file:///\",\"http://127.0.0.1:8377\",\"https://artzox.github.io\"]}]"
 
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge"  /v WebHidAllowDevicesForUrls /t REG_SZ /d "%POLICY%" /f >nul
 reg add "HKLM\SOFTWARE\Policies\Google\Chrome"   /v WebHidAllowDevicesForUrls /t REG_SZ /d "%POLICY%" /f >nul
