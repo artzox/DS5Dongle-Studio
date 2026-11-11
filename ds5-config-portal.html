@@ -781,7 +781,19 @@ async function uiSlotActivate(i){
       // blank after a reconnect until the portal was reopened.
       window._macroRows = null;
       await sleep(2500);
-      await reacquire();
+      // A failed reacquire is almost always the browser's WebHID grant, not the
+      // device: from 1.44.0 the bridge reports no USB serial number (matching a
+      // real DualSense), and a browser will not keep a permanent grant for a
+      // device without one. After a re-enumeration getDevices() therefore stops
+      // returning it and every read fails. Saying so here matters because the
+      // generic read-failure toast tells the user to Re-read, which cannot
+      // possibly help - only Connect, or the WebHID policy, will.
+      if (!(await reacquire())){
+        toast('Device re-enumerated and the browser lost access to it — click ' +
+              'Connect. To stop this happening, run automation\\ds5-policy.bat ' +
+              'once (grants by VID/PID, survives re-enumeration).', true);
+        return;
+      }
       // Re-read the macro table on the new handle; refreshSlots() below does
       // the same for the slot list.
       try { window._macroRows = await hidLocked(() => macroReadAll()); } catch(_){}
