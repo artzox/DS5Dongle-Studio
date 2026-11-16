@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented here.
 
+## [1.44.1] — 2026-11-16
+
+### Fixed
+
+- **No speaker audio, no effect leak and no native game audio after the
+  controller was switched on** — while haptics kept working. The cure was
+  toggling *Hide USB serial number* off and on again, which forced another
+  re-enumeration.
+
+  The host's mute state lives in a plain RAM global that only the host ever
+  writes, and nothing reset it. It therefore **survived a re-enumeration while
+  the host's audio endpoint did not**. Since 1.44.0 hid the serial number,
+  every re-enumeration gives Windows a *new* endpoint rather than the same one
+  back — so a mute set against the old endpoint stayed latched in the bridge
+  with nothing able to clear it.
+
+  That silenced three things at once and left a fourth working, which is what
+  made it look like an audio-routing fault rather than a stuck flag: the
+  speaker is scaled by `spk_gain`, which is zero while muted; the effect leak
+  is gated on `!mute[0]`; a native game's audio reaches the pad through the
+  same speaker path; and haptics do not pass through any of it.
+
+  The controller powering on is the common trigger, because the bridge swaps
+  from its idle identity back to the full one — but any re-enumeration would do
+  it, including the idle identity being muted while the controller is away.
+
+  The audio controls are now reset to the USB default when the device is
+  enumerated. Volume is deliberately left alone: it defaults to −100 dB, so
+  clearing it would mute the speaker whenever the host does not re-send a
+  level, and `state_init()` already pushes the configured volume to the
+  controller on every Bluetooth connect.
+
 ## [1.44.0] — 2026-11-11
 
 ### Fixed
