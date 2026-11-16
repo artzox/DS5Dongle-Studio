@@ -251,6 +251,11 @@ extern "C" void tud_resume_cb(void) {
 
 extern "C" void tud_mount_cb(void) {
     WAKE_DBG("tud_mount_cb state=%s", wake_state_name(state));
+    // This is the ONLY hook that fires on every enumeration, which is why the
+    // audio-control reset hangs off a wake callback rather than living in
+    // audio.cpp. A host that has just enumerated us has set no controls yet, so
+    // anything still in mute[] belongs to an endpoint that no longer exists.
+    usb_audio_controls_reset();
     host_suspended = false;
     host_resumed_event = true;
     suspend_at_us = 0;

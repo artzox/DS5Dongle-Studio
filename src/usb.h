@@ -17,3 +17,8 @@ bool usb_is_idle_pid(void);
 // True if the identity the HOST currently has enumerated is the idle one
 // (latched at GET_DESCRIPTOR, unlike usb_is_idle_pid which is only intent).
 bool usb_served_idle_pid(void);
+
+// Drop the host-set audio control state back to the USB audio default.
+// Called when the device is enumerated, because mute[] survives in RAM across a
+// re-enumeration while the host's endpoint does not - see the definition.
+void usb_audio_controls_reset(void);

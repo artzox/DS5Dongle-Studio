@@ -13,6 +13,33 @@
 uint8_t mute[2]; // 0: SPEAKER(0x02) 1: MIC(0x05)
 float volume[2] = {-100.0f,0.0f}; // 0: SPEAKER(0x02) 1: MIC(0x05)
 
+// Reset the host-set audio controls to the USB audio default on enumeration.
+//
+// mute[] is only ever written by the host, in response to a SET_CUR on the
+// feature unit, and it lives in plain RAM - so it SURVIVES a re-enumeration
+// while the host's endpoint does not. Every path that re-enumerates goes
+// through here: the controller powering on (restore_full_usb_identity), the
+// controller going away (the idle identity, which still exposes the audio
+// interfaces and can be muted while it is up), and any setting in ENUM_FIELDS.
+//
+// Once the serial number was hidden to match a real DualSense (1.44.0) each of
+// those gives Windows a NEW audio endpoint rather than the same one back. A
+// mute the host set against the old endpoint then stayed latched here, with
+// nothing to clear it: the speaker went silent, the effect leak stopped (it is
+// gated on !mute[0]) and a native game's audio never reached the pad - while
+// haptics carried on, because they do not pass through spk_gain. The cure was
+// toggling a setting to force yet another enumeration, which is the bug report
+// that found this.
+//
+// volume[] is deliberately NOT reset: it defaults to -100 dB (silence), so
+// clearing it would mute the speaker whenever the host does not re-send a
+// volume. state_init() pushes the configured volume to the controller on every
+// BT connect, which is what actually sets the level.
+void usb_audio_controls_reset(void) {
+    mute[0] = 0;
+    mute[1] = 0;
+}
+
 #define UAC1_ENTITY_SPK_FEATURE_UNIT    0x02
 #define UAC1_ENTITY_MIC_FEATURE_UNIT    0x05
 
